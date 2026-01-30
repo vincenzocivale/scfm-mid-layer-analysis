@@ -6,7 +6,7 @@ Salva i risultati in data/pseudotime_results/<nomefile>_results.csv
 import argparse
 from pathlib import Path
 import os
-from pseduo_time_benchmark.pipeline import run_evaluation_pipeline
+from pseudo_time_benchmark.pipeline import run_evaluation_pipeline
 
 def main():
     parser = argparse.ArgumentParser(description="Pseudo-time analysis pipeline")

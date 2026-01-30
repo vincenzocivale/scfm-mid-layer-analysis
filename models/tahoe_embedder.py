@@ -9,17 +9,17 @@ from tqdm import tqdm
 
 
 class TahoeEmbedder(BaseEmbedder):
-    
-    def __init__(self, model_size="70m", device="auto"):
+    def __init__(self, model_size="70m", device="auto", fp16=True):
         super().__init__(f"tahoe-x1-{model_size}", device)
         self.model_size = model_size
+        self.fp16 = fp16
         self.load_model()
-    
+
     def load_model(self):
         self.model, self.vocab, _, self.coll_cfg = ComposerTX.from_hf(
             "tahoebio/tahoe-x1", self.model_size, return_gene_embeddings=False
         )
-        dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
         self.model = self.model.to(device=self.device, dtype=dtype)
         self.model.eval()
     
@@ -65,7 +65,7 @@ class TahoeEmbedder(BaseEmbedder):
             warnings.warn("No valid layers to hook. Aborting extraction for this model.")
             return {}
 
-        dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
         with torch.no_grad():
             for batch in tqdm(loader, desc="Extracting Tahoe layers"):
                 for k, v in batch.items():
@@ -127,7 +127,7 @@ class TahoeEmbedder(BaseEmbedder):
             warnings.warn("No valid layers to hook for gene expression prediction.")
             return {}
 
-        dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
         
         try:
             with torch.no_grad():

@@ -17,10 +17,14 @@ def main():
     parser.add_argument('--model-size', default='70m', help="Dimensione del modello (es. '70m' per Tahoe)")
     parser.add_argument('--layers', nargs='+', type=int, required=True, help="Lista dei layer da cui estrarre gli embedding")
     parser.add_argument('--batch-size', type=int, default=4, help="Dimensione del batch per l'estrazione degli embedding")
+    parser.add_argument('--no-fp16', action='store_true', help="Disabilita l'uso di fp16 (usa fp32)")
     args = parser.parse_args()
 
     print(f"Caricamento dati da: {args.input}")
     adata = sc.read_h5ad(args.input)
+
+
+    # RIMOSSO: Limite debug alle prime 100 cellule. Ora processa tutto il dataset.
 
     if 'feature_name' not in adata.var.columns and 'gene_name' in adata.var.columns:
         adata.var['feature_name'] = adata.var['gene_name']
@@ -31,17 +35,18 @@ def main():
     print(f"Inizializzazione modello: {args.model}")
     if args.model == 'tahoe':
         from tahoe_embedder import TahoeEmbedder
-        embedder = TahoeEmbedder(model_size=args.model_size)
+        embedder = TahoeEmbedder(model_size=args.model_size, fp16=not args.no_fp16)
     elif args.model == 'scfoundation':
         from scfoundation_embedder import scFoundationEmbedder
-        embedder = scFoundationEmbedder()
+        embedder = scFoundationEmbedder(fp16=not args.no_fp16)
     elif args.model == 'scgpt':
         from scgpt_embedder import scGPTEmbedder
-        embedder = scGPTEmbedder()
+        embedder = scGPTEmbedder(fp16=not args.no_fp16)
     else:
         raise ValueError(f"Modello '{args.model}' non supportato.")
 
     print("Preparazione dati per il modello...")
+    print(f"[DEBUG]: {adata.var_names[:5]}")
     adata_prepared = embedder.prepare_data(adata)
 
     try:
