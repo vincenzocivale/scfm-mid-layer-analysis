@@ -46,7 +46,7 @@ def main():
         raise ValueError(f"Modello '{args.model}' non supportato.")
 
     print("Preparazione dati per il modello...")
-    print(f"[DEBUG]: {adata.var_names[:5]}")
+
     adata_prepared = embedder.prepare_data(adata)
 
     try:

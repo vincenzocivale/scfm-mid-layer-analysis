@@ -111,7 +111,7 @@ class MaeAutobin(nn.Module):
         self.token_emb = AutoDiscretizationEmbedding2(embed_dim, max_seq_len, bin_num=bin_num, bin_alpha=bin_alpha, pad_token_id=self.pad_token_id, mask_token_id=self.mask_token_id)
         self.pos_emb = nn.Embedding(max_seq_len+1, embed_dim)  #RandomPositionalEmbedding(embed_dim, max_seq_len)
 
-        # ## DEBUG
+
         self.encoder = None
 
         ##### decoder

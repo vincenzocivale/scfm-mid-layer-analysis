@@ -16,7 +16,7 @@ for arg in "$@"; do
 done
 
 OUTPUT_DIR="${OUTPUT_DIR:-data/embeddings}"
-BATCH_SIZE="${BATCH_SIZE:-8}"
+BATCH_SIZE="${BATCH_SIZE:-16}"
 TAHOE_MODEL_SIZE="${TAHOE_MODEL_SIZE:-1b}"
 
 if [ ${#INPUT_FILES[@]} -eq 0 ]; then
