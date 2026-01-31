@@ -16,7 +16,7 @@ for arg in "$@"; do
 done
 
 OUTPUT_DIR="${OUTPUT_DIR:-data/embeddings}"
-BATCH_SIZE="${BATCH_SIZE:-16}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
 TAHOE_MODEL_SIZE="${TAHOE_MODEL_SIZE:-1b}"
 
 if [ ${#INPUT_FILES[@]} -eq 0 ]; then
@@ -24,7 +24,7 @@ if [ ${#INPUT_FILES[@]} -eq 0 ]; then
     exit 1
 fi
 
-MODELS=(${MODELS:-tahoe})
+MODELS=(${MODELS:-scfoundation})
 
 echo "Starting analysis for ${#INPUT_FILES[@]} file(s) and ${#MODELS[@]} model(s)"
 echo "========================================================================"
