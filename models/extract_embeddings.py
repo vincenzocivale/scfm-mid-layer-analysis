@@ -76,10 +76,10 @@ def main():
                     continue
                 
                 # Crea un array vuoto con le dimensioni dell'adata originale
-                aligned_embedding = np.full((adata.n_obs, embedding.shape[1]), np.nan, dtype=np.float32)
+                aligned_embedding = np.full((adata.n_obs, embedding.shape[1]), np.nan, dtype=np.float16)
                 
                 # Riempie l'array con i valori degli embedding nelle posizioni corrette
-                aligned_embedding[common_indices_orig] = embedding[common_indices_prep]
+                aligned_embedding[common_indices_orig] = embedding[common_indices_prep].astype(np.float16)
 
                 adata.obsm[f"X_layer_{layer}"] = aligned_embedding
 

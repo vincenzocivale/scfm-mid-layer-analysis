@@ -62,30 +62,12 @@ selected_mid = random.sample(mid_genes, min(N_MID, len(mid_genes)))
 selected_high = random.sample(high_genes, min(N_HIGH, len(high_genes)))
 
 selected_genes = set(selected_low + selected_mid + selected_high)
-print(f"Selected genes total (before adding control): {len(selected_genes)}")
-
-# --- FIX: Assicura l'inclusione delle cellule di controllo ---
-# MODIFICA QUESTA RIGA con la tua vera etichetta di controllo
-CONTROL_LABEL = 'non-targeting' 
-MAX_CELLS_CONTROL = None  # Metti None per non avere limiti, o un numero per limitarle
-
-if CONTROL_LABEL in gene_counts:
-    selected_genes.add(CONTROL_LABEL)
-    print(f"Control label '{CONTROL_LABEL}' found and added to selection.")
-    print(f"Selected genes total (including control): {len(selected_genes)}")
-else:
-    print(f"WARNING: Control label '{CONTROL_LABEL}' NOT found in the dataset counts. Control cells will be missing.")
-# --- FINE FIX ---
+print(f"Selected genes total: {len(selected_genes)}")
 
 # Pre-computa max cells
 max_cells_per_gene = {g: MAX_CELLS_LOW for g in selected_low}
 max_cells_per_gene.update({g: MAX_CELLS_MID for g in selected_mid})
 max_cells_per_gene.update({g: MAX_CELLS_HIGH for g in selected_high})
-
-# --- FIX: Aggiungi il limite per il controllo ---
-if CONTROL_LABEL in selected_genes:
-    max_cells_per_gene[CONTROL_LABEL] = MAX_CELLS_CONTROL
-# --- FINE FIX ---
 
 # --- STRATEGIA SINGLE-PASS ---
 print("Single pass: collecting data and building matrix...")

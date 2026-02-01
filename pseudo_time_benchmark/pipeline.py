@@ -22,10 +22,10 @@ def run_evaluation_pipeline(h5ad_path, time_column='week', embedding_prefix='X_l
     
     # 2. Preprocessing & Root Finding
     adata_ref, root_idx = prepare_reference_dataset(adata, time_col=time_column, use_gpu=use_gpu)
-    
+
     # 3. Init Evaluator
     evaluator = EmbeddingEvaluator(adata_ref, root_cell_index=root_idx)
-    
+
     # 4. Setup Ground Truth (using PCA of HVGs)
     evaluator.setup_reference(use_rep='X_pca', n_neighbors=30)
     
