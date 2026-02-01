@@ -18,11 +18,11 @@ class scFoundationEmbedder(BaseEmbedder):
         self.load_model()
     
     def _load_gene_list(self):
-        df = pd.read_csv('./models/OS_scRNA_gene_index.19264.tsv', sep='\t')
+        df = pd.read_csv('/data2/home/vcivale/scfm-layer-analysis-refactored/models/OS_scRNA_gene_index.19264.tsv', sep='\t')
         return list(df['gene_name'])
     
     def load_model(self):
-        self.model, self.config = load_model_frommmf('./models/models.ckpt', 'cell')
+        self.model, self.config = load_model_frommmf('/data2/home/vcivale/scfm-layer-analysis-refactored/models/models.ckpt', 'cell')
         dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
 
         import sys; sys.stdout.flush()
