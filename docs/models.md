@@ -9,6 +9,7 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 | scFoundation | unica | 12 | S-token (`x[:, -1, :]`) | normalized+log1p, gene-symbol vocab 19264 | Implementato |
 | Tahoe-X1 | 70m / 1b / 3b | 12 / 24 / 32* | CLS token (`x[:, 0, :]`) | raw counts, vocab Tahoe | Implementato |
 | scGPT | unica | 12* | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
+| CellFM | unica | 40 | mean non-zero genes | raw counts, CellFM gene vocab | Implementato |
 | Geneformer | varia | TBD | mean pooling (tipico) | rank-ordered tokens | **Da implementare** |
 
 *Il numero di layer di Tahoe va verificato a runtime con `python src/scfm_eval/extraction/model_info.py --model tahoe --tahoe_size <size>`.
@@ -48,6 +49,23 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 - **Forward pass**: tokenizza (gene_id + espressione binned), inietta un token `<cls>` in posizione 0, processa con `TransformerModel._encode()`.
 - **Layer hook**: `register_forward_hook` su `model.transformer_encoder.layers[i]`. Estrae `output[:, 0, :]` (CLS token). Nota: PyTorch 2.1+ usa NestedTensor internamente nella `TransformerEncoder.forward()` — l'hook chiama `.to_padded_tensor(0.0)` prima di indicizzare.
 - **n_layers_total**: `len(model.transformer_encoder.layers)` — dipende dalla variante (whole_human = 12).
+
+## CellFM
+
+- **Paper**: Zeng et al., *CellFM: a large-scale foundation model pre-trained on transcriptomics of 100 million human cells*, 2024.
+- **Framework**: **MindSpore** (not PyTorch). Requires `conda activate cellfm-env` (see `envs/cellfm-env.yml`).
+- **Weights**: `data/checkpoints/cellfm/base_weight.ckpt` — download from [HuggingFace ShangguanNingyuan/CellFM](https://huggingface.co/ShangguanNingyuan/CellFM/tree/main). Override via `CELLFM_CKPT` env var.
+- **Gene vocabulary**: `CellFM/csv/gene_info.csv` (~19 k genes, gene symbol). Override via `CELLFM_GENE_INFO` not exposed yet; path is resolved relative to the `CellFM/` subdir.
+- **Architecture**: `Encoder` class — 40 `RetentionLayer` blocks (Multi-Head Retention, not standard attention), hidden_dim=1536, num_heads=48. No CLS token (unlike scGPT/Tahoe).
+- **Preprocessing** (`prepare_data`):
+  1. Maps `adata.var_names` to CellFM vocab indices via `gene_info.csv`.
+  2. Unmatched genes receive index 0 (zeroed embedding, effectively masked).
+  3. Updates `encoder.used_gene` in-place — no weight reload needed.
+- **Forward pass**: PYNATIVE_MODE (eager execution). The initial embedding sums value-encoder output and gene embedding. Then 40 RetentionLayer blocks iterate sequentially, each applying Multi-Head Retention + GatedLinearUnit FFN with SRMSNorm.
+- **Layer hook**: implemented inline — manual iteration of `enc.encoder[i]()` in PYNATIVE_MODE. Output collected at requested layer indices.
+- **Pooling**: mean over non-zero expression positions → `(b, 1536)` cell vector. No CLS token exists in `Encoder`.
+- **n_layers_total**: 40 (hardcoded; verified from `config.py` `enc_nlayers=40`).
+- **Nota**: un PyTorch version (CellFM-torch) è disponibile su GitHub ma non è stata ancora integrata. Se si vuole evitare MindSpore, quella è la strada.
 
 ## Geneformer (placeholder, non implementato)
 

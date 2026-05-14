@@ -37,7 +37,10 @@ CHUNK_SIZE="${CHUNK_SIZE:-50000}"
 TAHOE_MODEL_SIZE="${TAHOE_MODEL_SIZE:-1b}"
 MODELS=(${MODELS:-scfoundation})
 
+# Default Python from the main venv; models with dedicated envs override below.
 PYTHON="${PYTHON:-./.venv/bin/python}"
+# Python for CellFM (MindSpore env). Override via CELLFM_PYTHON env var.
+CELLFM_PYTHON="${CELLFM_PYTHON:-$(conda run -n cellfm-env which python 2>/dev/null || echo '')}"
 
 echo "Models:     ${MODELS[*]}"
 echo "Inputs:     ${#INPUT_FILES[@]}"
@@ -56,9 +59,23 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
         fi
         mkdir -p "$MODEL_OUT_DIR"
 
+        # Select Python interpreter: CellFM needs its MindSpore env.
+        if [ "$MODEL" == "cellfm" ]; then
+            if [ -z "$CELLFM_PYTHON" ]; then
+                echo "ERROR: cellfm-env not found. Create it first:"
+                echo "  conda env create -f envs/cellfm-env.yml && pip install -e ."
+                echo "Or set CELLFM_PYTHON=/path/to/cellfm-env/bin/python"
+                exit 1
+            fi
+            RUN_PYTHON="$CELLFM_PYTHON"
+        else
+            RUN_PYTHON="$PYTHON"
+        fi
+
         echo ""
-        echo "── $MODEL on $INPUT_NAME ──"
-        "$PYTHON" -m scfm_eval.extraction.chunked \
+        echo "── $MODEL on $INPUT_NAME (python: $RUN_PYTHON) ──"
+        PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" \
+        "$RUN_PYTHON" -m scfm_eval.extraction.chunked \
             --model "$MODEL" \
             "${SIZE_ARG[@]}" \
             --input "$INPUT_FILE" \
@@ -67,10 +84,14 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
             --chunk-size "$CHUNK_SIZE" \
             "${EXTRA_ARGS[@]}"
 
-        # Free GPU memory between (input, model) pairs.
-        "$PYTHON" - <<'EOF'
-import gc, torch
-torch.cuda.empty_cache(); gc.collect()
+        # Free GPU memory between (input, model) pairs (torch optional).
+        "$RUN_PYTHON" - <<'EOF' 2>/dev/null || true
+import gc
+try:
+    import torch; torch.cuda.empty_cache()
+except ImportError:
+    pass
+gc.collect()
 EOF
     done
 done

@@ -1,0 +1,54 @@
+# Conda environment for CellFM intermediate embedding extraction.
+#
+# CellFM uses MindSpore (not PyTorch) and cannot run inside the main .venv.
+# Create:   conda env create -f envs/cellfm-env.yml
+# Activate: conda activate cellfm-env
+#
+# SHORTCUT: an existing venv with MindSpore 2.8.0 is available at:
+#   /data2/home/vcivale/middle-layers-scfm/.venvs/.venv_cellfm39/bin/python
+# Set CELLFM_PYTHON to that path to skip creating a new environment.
+#
+# GPU note: the 'mindspore' package below is the CPU build. For GPU support:
+#   - CUDA 11.x: pip install mindspore-gpu==2.2.10
+#   - CUDA 12.x: see https://www.mindspore.cn/install for the correct whl
+#   Replace the 'mindspore==2.2.10' line below with the GPU package.
+#
+# Post-create (run once after activation):
+#   pip install -e .          # installs scfm_eval into cellfm-env
+#
+# Checkpoint: download base_weight.ckpt from
+#   https://huggingface.co/ShangguanNingyuan/CellFM/tree/main
+# and place it at: data/checkpoints/cellfm/base_weight.ckpt
+# (or override via CELLFM_CKPT env var)
+
+name: cellfm-env
+
+channels:
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+
+  - pip:
+    # MindSpore 2.2.10 (CPU build — swap for mindspore-gpu on CUDA nodes)
+    - mindspore==2.2.10
+
+    # torch (CPU-only) is required by scfm_eval.embedders.base for the
+    # BaseEmbedder device detection import. CellFMEmbedder does not use it.
+    - torch --index-url https://download.pytorch.org/whl/cpu
+
+    # Core scientific Python
+    - numpy>=1.23,<2
+    - pandas>=1.5
+    - scipy>=1.9
+    - scikit-learn>=1.1
+    - tqdm>=4.60
+    - h5py>=3.7
+
+    # Single-cell
+    - anndata>=0.9
+    - scanpy>=1.9
+
+    # This repo
+    - -e .

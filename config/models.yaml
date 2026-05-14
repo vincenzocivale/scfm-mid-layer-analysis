@@ -39,6 +39,19 @@ models:
     env_vars:
       SCGPT_MODEL_DIR: data/checkpoints/scgpt/whole_human
 
+  cellfm:
+    class: scfm_eval.embedders.cellfm.CellFMEmbedder
+    sizes: [default]
+    expected_input: raw_counts
+    gene_vocab: cellfm_gene_info      # CellFM/csv/gene_info.csv (~19k genes)
+    pooling: mean_nonzero             # mean over non-zero gene positions (no CLS)
+    framework: mindspore              # requires cellfm-env, NOT main .venv
+    env_vars:
+      CELLFM_CKPT: data/checkpoints/cellfm/base_weight.ckpt
+    notes: >
+      Requires conda activate cellfm-env. Checkpoint from
+      https://huggingface.co/ShangguanNingyuan/CellFM/tree/main
+
   geneformer:
     class: scfm_eval.embedders.geneformer.GeneformerEmbedder   # NOT YET PRESENT
     sizes: [6L, 12L, 30M]
