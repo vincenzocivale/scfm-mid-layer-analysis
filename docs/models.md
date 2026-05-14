@@ -8,10 +8,11 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 |---|---|---|---|---|---|
 | scFoundation | unica | 12 | S-token (`x[:, -1, :]`) | normalized+log1p, gene-symbol vocab 19264 | Implementato |
 | Tahoe-X1 | 70m / 1b / 3b | 12 / 24 / 32* | CLS token (`x[:, 0, :]`) | raw counts, vocab Tahoe | Implementato |
-| scGPT | varia | TBD | CLS token | raw counts, vocab scGPT | **Da implementare** |
+| scGPT | unica | 12* | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
 | Geneformer | varia | TBD | mean pooling (tipico) | rank-ordered tokens | **Da implementare** |
 
 *Il numero di layer di Tahoe va verificato a runtime con `python src/scfm_eval/extraction/model_info.py --model tahoe --tahoe_size <size>`.
+**Il numero di layer di scGPT dipende dalla variante scaricata (whole_human = 12). Verificare a runtime.
 
 ## scFoundation
 
@@ -34,12 +35,19 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 - **Layer hook**: `register_forward_hook` su `model.model.transformer_encoder.layers[i]`. Estrae `output[:, 0, :]` (CLS).
 - **n_layers_total**: `len(model.model.transformer_encoder.layers)`.
 
-## scGPT (placeholder, non implementato)
+## scGPT
 
-Nel codice è referenziato come opzione (`src/scfm_eval/extraction/chunked.py`, `get_model_info.py`), ma `scgpt_embedder.py` non esiste. Per aggiungerlo:
-1. Seguire la checklist in [adding_a_model.md](adding_a_model.md).
-2. Pooling tipico: CLS token come Tahoe.
-3. Input: raw counts.
+- **Paper**: Cui et al., *scGPT: toward building a foundation model for single-cell multi-omics using generative AI*, Nature Methods 2024.
+- **Repo**: `scGPT/` (vendored nella repo; installabile con `pip install --no-deps -e scGPT/`).
+- **Weights**: `data/checkpoints/scgpt/whole_human/` — richiede download manuale (o altra variante pretrained). Il path è overridabile via `SCGPT_MODEL_DIR` env var. La directory deve contenere: `best_model.pt`, `args.json`, `vocab.json`.
+- **Environment dedicato**: usare `conda activate scgpt-env` (creato da `envs/scgpt.yml`). scGPT richiede dipendenze incompatibili con il `.venv` principale (scanpy<2, datasets, networkx). Non usare flash-attn (`use_fast_transformer=False` è hardcoded nell'embedder).
+- **Preprocessing** (`prepare_data`):
+  1. Usa `adata.var['feature_name']` se presente, altrimenti `adata.var_names`.
+  2. Filtra ai geni presenti nel vocab scGPT (`vocab.json` nella model dir).
+  3. Aggiunge colonna `id_in_vocab` a `adata.var`.
+- **Forward pass**: tokenizza (gene_id + espressione binned), inietta un token `<cls>` in posizione 0, processa con `TransformerModel._encode()`.
+- **Layer hook**: `register_forward_hook` su `model.transformer_encoder.layers[i]`. Estrae `output[:, 0, :]` (CLS token). Nota: PyTorch 2.1+ usa NestedTensor internamente nella `TransformerEncoder.forward()` — l'hook chiama `.to_padded_tensor(0.0)` prima di indicizzare.
+- **n_layers_total**: `len(model.transformer_encoder.layers)` — dipende dalla variante (whole_human = 12).
 
 ## Geneformer (placeholder, non implementato)
 

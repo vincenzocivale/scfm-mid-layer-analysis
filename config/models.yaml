@@ -31,12 +31,13 @@ models:
   # ─── Below: planned, not yet implemented. See docs/adding_a_model.md. ───
 
   scgpt:
-    class: scfm_eval.embedders.scgpt.scGPTEmbedder   # NOT YET PRESENT
+    class: scfm_eval.embedders.scgpt.scGPTEmbedder
     sizes: [default]
     expected_input: raw_counts
-    gene_vocab: scgpt_vocab
-    pooling: cls_token
-    status: planned
+    gene_vocab: scgpt_vocab            # bundled with weights in model_dir
+    pooling: cls_token                 # cell embedding = x[:, 0, :] (CLS token)
+    env_vars:
+      SCGPT_MODEL_DIR: data/checkpoints/scgpt/whole_human
 
   geneformer:
     class: scfm_eval.embedders.geneformer.GeneformerEmbedder   # NOT YET PRESENT

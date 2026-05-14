@@ -45,3 +45,4 @@ def list_embedders() -> list:
 # Built-in registrations (importable cheaply — no torch/tahoe_x1 yet).
 register_embedder('scfoundation', 'scfm_eval.embedders.scfoundation', 'scFoundationEmbedder')
 register_embedder('tahoe', 'scfm_eval.embedders.tahoe', 'TahoeEmbedder')
+register_embedder('scgpt', 'scfm_eval.embedders.scgpt', 'scGPTEmbedder')

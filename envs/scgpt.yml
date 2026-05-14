@@ -1,0 +1,45 @@
+# Conda environment for scGPT intermediate embedding extraction.
+#
+# Create:  conda env create -f envs/scgpt.yml
+# Activate: conda activate scgpt-env
+# Then install scGPT and the repo (see post-create steps at the bottom).
+#
+# Post-create (run once after activation):
+#   pip install --no-deps -e scGPT/
+#   pip install -e .
+
+name: scgpt-env
+
+channels:
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+
+  - pip:
+    # PyTorch with CUDA 12.1 (driver 535+ supports CUDA 12.x)
+    - torch==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+    - torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
+
+    # Core scientific Python
+    - numpy>=1.23,<2
+    - pandas>=1.5
+    - scipy>=1.9
+    - scikit-learn>=1.1
+    - matplotlib>=3.5
+    - tqdm>=4.60
+    - h5py>=3.7
+
+    # Single-cell
+    - anndata>=0.9
+    - scanpy>=1.9.1,<2.0.0
+
+    # scGPT transitive runtime imports (util.py, tasks/grn.py, scbank/)
+    - networkx>=2.8
+    - datasets>=2.20.0,<3
+    - typing-extensions>=4.2.0,<5.0.0
+    - ipython>=7.0
+
+    # This repo
+    - -e .

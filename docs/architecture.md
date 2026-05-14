@@ -61,6 +61,7 @@ Tutti gli embedder restituiscono **un vettore per cellula per layer**: `dict[int
 |---|---|---|---|
 | scFoundation | post-blocco `encoder.transformer_encoder[i]` | last token (S-token) | l'ultimo token è una somma totale di espressione, usata dal modello come embedding cellulare |
 | Tahoe-X1 | post-blocco `transformer_encoder.layers[i]` | CLS token (pos 0) | il modello inietta un CLS token come prima posizione |
+| scGPT | post-blocco `transformer_encoder.layers[i]` | CLS token (pos 0) | identico a Tahoe; PyTorch 2.1+ richiede `.to_padded_tensor()` nell'hook per bypassare il fast-path NestedTensor |
 
 **Convenzione di indicizzazione**: `layer_i = output dell'i-esimo blocco transformer`. NON include l'output del solo embedding layer (per il quale servirebbe `layer_-1` o simile, non implementato).
 
@@ -90,6 +91,7 @@ src/scfm_eval/             ← TUTTA la library code
     registry.py            ← name → class (lazy import)
     scfoundation.py
     tahoe.py
+    scgpt.py
     vendor/scfoundation/   ← codice vendored upstream, isolato
   benchmarks/
     classification/  pseudotime/  perturbation/   ← preprocessing + evaluator + pipeline
@@ -109,6 +111,9 @@ scripts/                   ← CLI entry points (argparse → chiamano scfm_eval
   run_experiment_grid.py   ← driver: legge experiments.yaml, dispatcha tutto
 
 run_embedding_extraction.sh   ← orchestratore stage 1 (loopa input × modelli)
+
+envs/
+  scgpt.yml                ← conda env per scGPT (Python 3.9, torch 2.1, no flash-attn)
 
 notebooks/
   paper_figures.ipynb      ← plot finali per il paper
