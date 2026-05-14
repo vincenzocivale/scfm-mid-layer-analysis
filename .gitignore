@@ -1,5 +1,27 @@
+# Data and model artifacts
 *.h5ad
 *.ckpt
-*.log
-*/__pycache__/
 *.tsv
+data/embeddings/
+
+# Logs and figures
+*.log
+logs/
+figures/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/

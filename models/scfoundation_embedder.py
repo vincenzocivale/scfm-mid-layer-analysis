@@ -1,6 +1,11 @@
-"""scFoundation embedder - FIXED VERSION"""
+"""scFoundation embedder."""
+import os
 import sys
-sys.path.insert(0, './models')
+
+_MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _MODELS_DIR not in sys.path:
+    sys.path.insert(0, _MODELS_DIR)
+
 from models.base_embedder import BaseEmbedder
 from load import load_model_frommmf, gatherData
 import torch
@@ -10,19 +15,25 @@ import scanpy as sc
 from scipy.sparse import issparse
 from tqdm import tqdm
 
+_DEFAULT_GENE_INDEX = os.path.join(_MODELS_DIR, 'OS_scRNA_gene_index.19264.tsv')
+_DEFAULT_CKPT = os.path.join(_MODELS_DIR, 'models.ckpt')
+
+
 class scFoundationEmbedder(BaseEmbedder):
-    def __init__(self, device="auto", fp16=True):
+    def __init__(self, device="auto", fp16=True, ckpt_path=None, gene_index_path=None):
         super().__init__("scfoundation", device)
         self.fp16 = fp16
+        self.ckpt_path = ckpt_path or os.environ.get('SCFOUNDATION_CKPT', _DEFAULT_CKPT)
+        self.gene_index_path = gene_index_path or os.environ.get('SCFOUNDATION_GENE_INDEX', _DEFAULT_GENE_INDEX)
         self.gene_list = self._load_gene_list()
         self.load_model()
-    
+
     def _load_gene_list(self):
-        df = pd.read_csv('/data2/home/vcivale/scfm-layer-analysis-refactored/models/OS_scRNA_gene_index.19264.tsv', sep='\t')
+        df = pd.read_csv(self.gene_index_path, sep='\t')
         return list(df['gene_name'])
-    
+
     def load_model(self):
-        self.model, self.config = load_model_frommmf('/data2/home/vcivale/scfm-layer-analysis-refactored/models/models.ckpt', 'cell')
+        self.model, self.config = load_model_frommmf(self.ckpt_path, 'cell')
         dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
 
         import sys; sys.stdout.flush()

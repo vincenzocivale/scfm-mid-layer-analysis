@@ -4,8 +4,12 @@ Permette di specificare input, colonna dei tipi di cellule, prefisso embedding e
 Salva i risultati in una cartella di output specificata.
 """
 import argparse
-from pathlib import Path
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from cell_type_classification_benchmark.pipeline import run_classification_pipeline
 
 def main():

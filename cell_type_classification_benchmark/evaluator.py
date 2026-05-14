@@ -41,7 +41,7 @@ class ClassificationEvaluator:
         X = self.adata.obsm[layer_key]
         y = self.labels
 
-        clf = LogisticRegression(solver='liblinear', multi_class='ovr', random_state=42)
+        clf = LogisticRegression(solver='liblinear', random_state=42)
         
         # 5-fold stratified cross-validation
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)

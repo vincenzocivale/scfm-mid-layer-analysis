@@ -2,7 +2,7 @@
 set -e
 
 # --------------------------------------------------
-# PyTorch memory config
+# PyTorch memory settings
 # --------------------------------------------------
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 
@@ -21,13 +21,13 @@ for arg in "$@"; do
 done
 
 # --------------------------------------------------
-# Config (override via env)
+# Config (overridable via env)
 # --------------------------------------------------
 OUTPUT_DIR="${OUTPUT_DIR:-data/embeddings}"
-BATCH_SIZE="${BATCH_SIZE:-16}"
-CHUNK_SIZE="${CHUNK_SIZE:-50000}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+CHUNK_SIZE="${CHUNK_SIZE:-20000}"
 TAHOE_MODEL_SIZE="${TAHOE_MODEL_SIZE:-1b}"
-MODELS=(${MODELS:-tahoe})
+MODELS=(${MODELS:-scfoundation})
 
 # --------------------------------------------------
 # Sanity check
@@ -38,11 +38,11 @@ if [ ${#INPUT_FILES[@]} -eq 0 ]; then
 fi
 
 echo "Starting CHUNKED analysis"
-echo "Inputs     : ${#INPUT_FILES[@]}"
-echo "Models     : ${MODELS[*]}"
-echo "Chunk size : $CHUNK_SIZE"
-echo "Batch size : $BATCH_SIZE"
-echo "Output dir : $OUTPUT_DIR"
+echo "Inputs      : ${#INPUT_FILES[@]}"
+echo "Models      : ${MODELS[*]}"
+echo "Chunk size  : $CHUNK_SIZE"
+echo "Batch size  : $BATCH_SIZE"
+echo "Output dir  : $OUTPUT_DIR"
 echo "========================================================================"
 
 # --------------------------------------------------
@@ -75,10 +75,10 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
         fi
 
         LAYERS=$(seq 0 $((NUM_LAYERS - 1)) | tr '\n' ' ')
-        echo "Detected $NUM_LAYERS layers"
+        echo "Detected $NUM_LAYERS layers: $LAYERS"
 
         # --------------------------------------------------
-        # Output directory (NO single h5ad)
+        # Output directory (per model + input)
         # --------------------------------------------------
         if [ "$MODEL" == "tahoe" ]; then
             MODEL_OUT_DIR="${OUTPUT_DIR}/${INPUT_NAME}_${MODEL}_${TAHOE_MODEL_SIZE}"
@@ -89,11 +89,11 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
         mkdir -p "$MODEL_OUT_DIR"
 
         # --------------------------------------------------
-        # Run chunked extractor
+        # Run chunked extraction
         # --------------------------------------------------
-        echo "--- RUNNING CHUNK-BY-CHUNK EXTRACTION ---"
+        echo "--- RUNNING CHUNKED EMBEDDING EXTRACTION ---"
 
-        python models/extract_embeddings_chunked.py \
+        python models/extract_embeddings_chunked_all_layers.py \
             --model "$MODEL" \
             --model-size "$TAHOE_MODEL_SIZE" \
             --input "$INPUT_FILE" \
@@ -104,7 +104,7 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
             "${EXTRA_ARGS[@]}"
 
         # --------------------------------------------------
-        # Hard cleanup between runs
+        # Cleanup GPU
         # --------------------------------------------------
         python - <<EOF
 import torch, gc

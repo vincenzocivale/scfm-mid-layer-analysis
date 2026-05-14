@@ -4,8 +4,12 @@ Permette di specificare input, colonna temporale, prefisso embedding e output.
 Salva i risultati in data/pseudotime_results/<nomefile>_results.csv
 """
 import argparse
-from pathlib import Path
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from pseudo_time_benchmark.pipeline import run_evaluation_pipeline
 
 def main():
