@@ -5,7 +5,7 @@
 # Then install scGPT and the repo (see post-create steps at the bottom).
 #
 # Post-create (run once after activation):
-#   pip install --no-deps -e scGPT/
+#   pip install --no-deps git+https://github.com/bowang-lab/scGPT.git
 #   pip install -e .
 
 name: scgpt-env

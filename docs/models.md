@@ -8,7 +8,7 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 |---|---|---|---|---|---|
 | scFoundation | unica | 12 | S-token (`x[:, -1, :]`) | normalized+log1p, gene-symbol vocab 19264 | Implementato |
 | Tahoe-X1 | 70m / 1b / 3b | 12 / 24 / 32* | CLS token (`x[:, 0, :]`) | raw counts, vocab Tahoe | Implementato |
-| scGPT | unica | 12* | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
+| scGPT | unica | 12** | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
 | CellFM | unica | 40 | mean non-zero genes | raw counts, CellFM gene vocab | Implementato |
 | UCE | 4layer / 33layer | 4 / 33 | CLS token (`x[0, :, :]`, seq-first) | raw counts, ESM2 protein vocab | Implementato |
 | Geneformer | varia | TBD | mean pooling (tipico) | rank-ordered tokens | **Da implementare** |
@@ -40,7 +40,7 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 ## scGPT
 
 - **Paper**: Cui et al., *scGPT: toward building a foundation model for single-cell multi-omics using generative AI*, Nature Methods 2024.
-- **Repo**: `scGPT/` (vendored nella repo; installabile con `pip install --no-deps -e scGPT/`).
+- **Repo**: https://github.com/bowang-lab/scGPT (installabile con `pip install --no-deps git+https://github.com/bowang-lab/scGPT.git`).
 - **Weights**: `data/checkpoints/scgpt/whole_human/` — richiede download manuale (o altra variante pretrained). Il path è overridabile via `SCGPT_MODEL_DIR` env var. La directory deve contenere: `best_model.pt`, `args.json`, `vocab.json`.
 - **Environment dedicato**: usare `conda activate scgpt-env` (creato da `envs/scgpt.yml`). scGPT richiede dipendenze incompatibili con il `.venv` principale (scanpy<2, datasets, networkx). Non usare flash-attn (`use_fast_transformer=False` è hardcoded nell'embedder).
 - **Preprocessing** (`prepare_data`):

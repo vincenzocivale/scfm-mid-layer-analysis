@@ -28,8 +28,6 @@ models:
     pooling: cls_token                 # cell embedding = x[:, 0, :] (CLS)
     weights_source: huggingface:tahoebio/tahoe-x1
 
-  # ─── Below: planned, not yet implemented. See docs/adding_a_model.md. ───
-
   scgpt:
     class: scfm_eval.embedders.scgpt.scGPTEmbedder
     sizes: [default]
@@ -38,6 +36,8 @@ models:
     pooling: cls_token                 # cell embedding = x[:, 0, :] (CLS token)
     env_vars:
       SCGPT_MODEL_DIR: data/checkpoints/scgpt/whole_human
+
+  # ─── Below: planned, not yet implemented. See docs/adding_a_model.md. ───
 
   cellfm:
     class: scfm_eval.embedders.cellfm.CellFMEmbedder

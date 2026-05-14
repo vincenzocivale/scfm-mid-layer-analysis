@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A benchmarking framework that compares how the **per-layer hidden states** of single-cell foundation models (scFoundation, Tahoe-X1, planned: scGPT/Geneformer) represent biology. The same set of embeddings (one per transformer layer of one model on one dataset) is fed through three independent evaluation pipelines: cell-type classification, pseudo-time inference, and perturbation response. Code comments and CLI help strings are mostly in Italian.
+A benchmarking framework that compares how the **per-layer hidden states** of single-cell foundation models (scFoundation, Tahoe-X1, scGPT, planned: Geneformer) represent biology. The same set of embeddings (one per transformer layer of one model on one dataset) is fed through three independent evaluation pipelines: cell-type classification, pseudo-time inference, and perturbation response. Code comments and CLI help strings are mostly in Italian.
 
 For paper-grade documentation see `docs/` (start with `docs/README.md`).
 
