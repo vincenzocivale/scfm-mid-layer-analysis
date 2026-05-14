@@ -47,3 +47,4 @@ register_embedder('scfoundation', 'scfm_eval.embedders.scfoundation', 'scFoundat
 register_embedder('tahoe', 'scfm_eval.embedders.tahoe', 'TahoeEmbedder')
 register_embedder('scgpt', 'scfm_eval.embedders.scgpt', 'scGPTEmbedder')
 register_embedder('cellfm', 'scfm_eval.embedders.cellfm', 'CellFMEmbedder')
+register_embedder('uce', 'scfm_eval.embedders.uce', 'UCEEmbedder')

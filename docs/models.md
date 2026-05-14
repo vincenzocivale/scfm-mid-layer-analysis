@@ -10,6 +10,7 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 | Tahoe-X1 | 70m / 1b / 3b | 12 / 24 / 32* | CLS token (`x[:, 0, :]`) | raw counts, vocab Tahoe | Implementato |
 | scGPT | unica | 12* | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
 | CellFM | unica | 40 | mean non-zero genes | raw counts, CellFM gene vocab | Implementato |
+| UCE | 4layer / 33layer | 4 / 33 | CLS token (`x[0, :, :]`, seq-first) | raw counts, ESM2 protein vocab | Implementato |
 | Geneformer | varia | TBD | mean pooling (tipico) | rank-ordered tokens | **Da implementare** |
 
 *Il numero di layer di Tahoe va verificato a runtime con `python src/scfm_eval/extraction/model_info.py --model tahoe --tahoe_size <size>`.
@@ -66,6 +67,33 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 - **Pooling**: mean over non-zero expression positions → `(b, 1536)` cell vector. No CLS token exists in `Encoder`.
 - **n_layers_total**: 40 (hardcoded; verified from `config.py` `enc_nlayers=40`).
 - **Nota**: un PyTorch version (CellFM-torch) è disponibile su GitHub ma non è stata ancora integrata. Se si vuole evitare MindSpore, quella è la strada.
+
+## UCE (Universal Cell Embeddings)
+
+- **Paper**: Rosen et al., *Universal Cell Embeddings: A Foundation Model for Cell Biology*, bioRxiv 2023.
+- **Source repo**: https://github.com/snap-stanford/UCE (MIT License; code vendored in `src/scfm_eval/embedders/vendor/uce/`).
+- **Weights**: auto-downloaded from figshare on first use to `data/checkpoints/uce/`.  Override via `UCE_MODEL_CKPT` and `UCE_MODEL_FILES_DIR` env vars.
+- **Environment dedicato**: usare `conda activate uce-env` (creato da `envs/uce.yml`).
+- **Architecture**: 4-layer Transformer (pretrained default; 33-layer variant also available).
+  - Input token dim: 5120 (ESM2 protein embeddings).
+  - d_model: 1280, nhead: 20, d_hid: 5120, output_dim: 1280.
+  - Total learnable parameters: ~90M (4-layer).
+- **Input semantics** (`prepare_data`):
+  1. Resolves gene symbols from `adata.var['feature_name']` if present, otherwise `adata.var_names`. Matching is case-insensitive.
+  2. Filters to genes that have ESM2 protein embeddings for the target species (default: `human`).
+  3. Further filters to genes present in the chromosome position file.
+  4. Computes per-gene: token index in UCE vocabulary (`pe_row_idxs`), chromosome code, genomic start position.
+  5. `adata.X` must contain **raw (un-normalised) counts** — gene sampling is weighted by `log1p(counts)`.
+- **Cell sentence construction** (`_make_cell_sentences`):
+  - Samples `sample_size=1024` genes per cell, weighted by `log1p` expression.
+  - Orders sampled genes by chromosome (shuffled), then by genomic start within each chromosome.
+  - Sequence: `[CLS, chrom_open, gene, gene, ..., chrom_close, chrom_open, ...] + PAD` up to length 1536.
+  - Gene tokens are ESM2 protein embeddings (5120-dim), L2-normalised before input to the model.
+  - Sampling is stochastic; a fixed numpy seed (42) is set during `extract_embeddings_for_layers` for reproducibility.
+- **Forward pass**: `TransformerModel.forward(src, mask)` where `src` is sequence-first `[seq_len, batch, token_dim]`.
+- **Layer hook**: `register_forward_hook` on `model.transformer_encoder.layers[i]`.  Extracts `output[0, :, :]` (CLS token, position 0, seq-first) → shape `(batch, 1280)`.
+- **Pooling**: CLS token at position 0.  Pre-decoder output (unlike the published UCE embedding which applies an additional MLP decoder); consistent with the `X_layer_i` convention in this framework.
+- **n_layers_total**: 4 (default pretrained model) or 33 (larger variant).  Verified at runtime via `len(model.transformer_encoder.layers)`.
 
 ## Geneformer (placeholder, non implementato)
 

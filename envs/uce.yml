@@ -1,0 +1,48 @@
+# Conda environment for UCE (Universal Cell Embeddings) intermediate-layer extraction.
+#
+# Create:   conda env create -f envs/uce.yml
+# Activate: conda activate uce-env
+#
+# Post-create (run once after activation):
+#   pip install -e .          # installs scfm_eval into uce-env
+#
+# Model files are downloaded automatically from figshare on first use.
+# Default storage: data/checkpoints/uce/
+# Override paths via env vars:
+#   UCE_MODEL_CKPT          – path to 4layer_model.torch (or 33layer_model.torch)
+#   UCE_MODEL_FILES_DIR     – directory with all_tokens.torch, species_chrom.csv,
+#                              species_offsets.pkl, protein_embeddings/
+#
+# GPU note: the torch line below targets CUDA 12.1 (driver 535+).
+# For CUDA 11.8 replace the index URL with:
+#   https://download.pytorch.org/whl/cu118
+
+name: uce-env
+
+channels:
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+
+  - pip:
+    # PyTorch with CUDA 12.1  (UCE was developed with torch 2.1.x)
+    - torch==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+    - torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
+
+    # Core scientific Python
+    - numpy>=1.23,<2
+    - pandas>=1.5
+    - scipy>=1.9
+    - scikit-learn>=1.1
+    - tqdm>=4.60
+    - h5py>=3.7
+    - requests>=2.25
+
+    # Single-cell
+    - anndata>=0.9
+    - scanpy>=1.9
+
+    # This repo
+    - -e .

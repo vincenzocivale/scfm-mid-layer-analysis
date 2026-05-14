@@ -52,6 +52,20 @@ models:
       Requires conda activate cellfm-env. Checkpoint from
       https://huggingface.co/ShangguanNingyuan/CellFM/tree/main
 
+  uce:
+    class: scfm_eval.embedders.uce.UCEEmbedder
+    sizes: [4layer, 33layer]
+    expected_input: raw_counts        # adata.X must be raw (un-normalised) counts
+    gene_vocab: uce_protein_emb       # ESM2 protein embeddings per gene symbol
+    pooling: cls_token                # cell embedding = transformer_layer_i_output[0, :, :] (CLS, seq-first)
+    env_vars:
+      UCE_MODEL_CKPT: data/checkpoints/uce/4layer_model.torch
+      UCE_MODEL_FILES_DIR: data/checkpoints/uce/model_files
+    notes: >
+      Model files are auto-downloaded from figshare on first use (requires internet).
+      Use conda activate uce-env (envs/uce.yml).  For the 33-layer variant set
+      UCE_MODEL_CKPT to the 33layer_model.torch path and pass nlayers=33.
+
   geneformer:
     class: scfm_eval.embedders.geneformer.GeneformerEmbedder   # NOT YET PRESENT
     sizes: [6L, 12L, 30M]
