@@ -8,9 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from pseudo_time_benchmark.pipeline import run_evaluation_pipeline
+from scfm_eval.benchmarks.pseudotime.pipeline import run_evaluation_pipeline
 
 def main():
     parser = argparse.ArgumentParser(description="Pseudo-time analysis pipeline")

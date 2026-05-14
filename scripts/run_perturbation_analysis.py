@@ -5,9 +5,9 @@ import argparse
 import sys
 import os
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from perturbation_analysis.pipeline import run_perturbation_pipeline
+from scfm_eval.benchmarks.perturbation.pipeline import run_perturbation_pipeline
 
 def main():
     parser = argparse.ArgumentParser(description="Run the perturbation analysis pipeline on an AnnData file with embeddings.")

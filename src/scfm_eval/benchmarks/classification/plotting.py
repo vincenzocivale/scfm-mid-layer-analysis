@@ -110,7 +110,7 @@ def plot_all_metrics(results_path, model_name=None):
     plt.show()
 
 # Esempio di utilizzo (da notebook o script):
-# from cell_type_classification_benchmark.plotting import plot_all_metrics
+# from scfm_eval.benchmarks.classification.plotting import plot_all_metrics
 # plot_all_metrics(
 #     results_path="data/classification_results/my_dataset_classification_results.csv",
 #     model_name="My Model"

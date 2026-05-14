@@ -1,0 +1,75 @@
+# Dataset registry.
+#
+# For each dataset: file path, source, supported downstream tasks, and the
+# task-specific `.obs` columns expected by the corresponding evaluator.
+#
+# Keep this in sync with docs/datasets.md.
+
+datasets:
+
+  brain:
+    path: data/raw/brain_dataset.h5ad
+    source: https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e
+    counts_state: log1p_normalized       # adata.X is normalized+log1p; raw counts in adata.raw
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  spinal:
+    path: data/raw/spinal_dataset.h5ad
+    source: https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e
+    counts_state: log1p_normalized
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  liver:
+    path: data/raw/liver_dataset.h5ad
+    source: https://cellxgene.cziscience.com/collections/be679cb1-35f0-46c9-9a2d-30691862a54a
+    counts_state: log1p_normalized
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  inner_ear:
+    path: data/raw/inner_ear_development.h5ad
+    source: TBD                          # GEO accession to be filled in
+    counts_state: TBD                    # verify
+    tasks:
+      pseudotime:
+        time_column: week
+
+  GSE276896:
+    path: data/raw/GSE276896_adata_meta.h5ad
+    source: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE276896
+    counts_state: log1p_normalized
+    tasks:
+      pseudotime:
+        time_column: week
+
+  D1_Rest:
+    path: data/raw/D1_Rest.assigned_guide_undersampled.h5ad
+    source: Perturb-seq T-cell dataset (paper reference TBD)
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: gene_name
+        control_label: non-targeting     # verify against actual values in adata.obs
+
+  D1_Stim8hr:
+    path: data/raw/D1_Stim8hr.assigned_guide_undersampled.h5ad
+    source: Perturb-seq T-cell dataset (paper reference TBD)
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: gene_name
+        control_label: non-targeting
+
+  D1_Stim48hr:
+    path: data/raw/D1_Stim48hr.assigned_guide_undersampled.h5ad
+    source: Perturb-seq T-cell dataset (paper reference TBD)
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: gene_name
+        control_label: non-targeting

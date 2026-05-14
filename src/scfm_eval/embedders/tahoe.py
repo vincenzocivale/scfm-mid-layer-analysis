@@ -1,19 +1,38 @@
-"""Tahoe-X1 embedder - FIXED VERSION"""
-from models.base_embedder import BaseEmbedder
+"""Tahoe-X1 embedder."""
+import warnings
+
+import numpy as np
+import torch
 from tahoe_x1.model import ComposerTX
 from tahoe_x1.utils.util import loader_from_adata
-import torch
-import numpy as np
-import warnings
 from tqdm import tqdm
+
+from .base import BaseEmbedder
 
 
 class TahoeEmbedder(BaseEmbedder):
+    # See docs/models.md for what these mean.
+    pooling = 'cls_token'
+    expected_input = 'raw_counts'
+
     def __init__(self, model_size="70m", device="auto", fp16=True):
         super().__init__(f"tahoe-x1-{model_size}", device)
         self.model_size = model_size
         self.fp16 = fp16
+        self.genes_matched = None
         self.load_model()
+
+    @property
+    def n_layers_total(self):
+        return len(self.model.model.transformer_encoder.layers)
+
+    @property
+    def hidden_dim(self):
+        first_layer = self.model.model.transformer_encoder.layers[0]
+        for attr in ('d_model', 'embed_dim', 'hidden_size'):
+            if hasattr(first_layer, attr):
+                return getattr(first_layer, attr)
+        return None
 
     def load_model(self):
         self.model, self.vocab, _, self.coll_cfg = ComposerTX.from_hf(
@@ -22,15 +41,16 @@ class TahoeEmbedder(BaseEmbedder):
         dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
         self.model = self.model.to(device=self.device, dtype=dtype)
         self.model.eval()
-    
+
     def prepare_data(self, adata):
         """Filter genes to only those in vocabulary"""
         adata = adata.copy()
         adata.var["id_in_vocab"] = [self.vocab[g] if g in self.vocab else -1 for g in adata.var_names]
-        
+
         num_matched = (adata.var["id_in_vocab"] >= 0).sum()
+        self.genes_matched = int(num_matched)
         print(f"Matched {num_matched}/{len(adata.var_names)} genes in Tahoe vocabulary")
-        
+
         return adata[:, adata.var["id_in_vocab"] >= 0]
     
     def extract_embeddings_for_layers(self, adata, layer_indices: list, batch_size: int = 4) -> dict:
@@ -182,3 +202,5 @@ class TahoeEmbedder(BaseEmbedder):
     
     def get_all_layer_indices(self):
         return list(range(len(self.model.model.transformer_encoder.layers)))
+
+

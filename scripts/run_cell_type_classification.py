@@ -8,9 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from cell_type_classification_benchmark.pipeline import run_classification_pipeline
+from scfm_eval.benchmarks.classification.pipeline import run_classification_pipeline
 
 def main():
     parser = argparse.ArgumentParser(description="Cell type classification analysis pipeline")

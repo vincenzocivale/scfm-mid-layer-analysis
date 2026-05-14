@@ -122,7 +122,7 @@ def plot_distance_vs_pseudotime(df, layer, n_points=2000, ax=None):
         plt.show()
 
 # Esempio di utilizzo (da notebook o script):
-# from pseudo_time_benchmark.pseudotime_plotting import plot_all_with_baseline
+# from scfm_eval.benchmarks.pseudotime.plotting import plot_all_with_baseline
 # plot_all_with_baseline(
 #     results_path="data/pseudotime_results/GSE276896_adata_meta_scfoundation_embeddings_timeordered_results.csv",
 #     baseline_path="data/pseudotime_results/GSE276896_adata_meta_baseline_results.csv",  # file con baseline

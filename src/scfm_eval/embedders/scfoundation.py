@@ -1,32 +1,45 @@
 """scFoundation embedder."""
 import os
-import sys
+from pathlib import Path
 
-_MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _MODELS_DIR not in sys.path:
-    sys.path.insert(0, _MODELS_DIR)
-
-from models.base_embedder import BaseEmbedder
-from load import load_model_frommmf, gatherData
-import torch
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import torch
 from scipy.sparse import issparse
 from tqdm import tqdm
 
-_DEFAULT_GENE_INDEX = os.path.join(_MODELS_DIR, 'OS_scRNA_gene_index.19264.tsv')
-_DEFAULT_CKPT = os.path.join(_MODELS_DIR, 'models.ckpt')
+from .base import BaseEmbedder
+from .vendor.scfoundation.load import load_model_frommmf, gatherData
+
+# Default weight locations: data/checkpoints/scfoundation/ at repo root.
+# Overridable via SCFOUNDATION_CKPT / SCFOUNDATION_GENE_INDEX env vars.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_CKPT = _REPO_ROOT / 'data' / 'checkpoints' / 'scfoundation' / 'models.ckpt'
+_DEFAULT_GENE_INDEX = _REPO_ROOT / 'data' / 'checkpoints' / 'scfoundation' / 'OS_scRNA_gene_index.19264.tsv'
 
 
 class scFoundationEmbedder(BaseEmbedder):
+    # See docs/models.md for what these mean.
+    pooling = 's_token'
+    expected_input = 'log1p_normalized'
+
     def __init__(self, device="auto", fp16=True, ckpt_path=None, gene_index_path=None):
         super().__init__("scfoundation", device)
         self.fp16 = fp16
-        self.ckpt_path = ckpt_path or os.environ.get('SCFOUNDATION_CKPT', _DEFAULT_CKPT)
-        self.gene_index_path = gene_index_path or os.environ.get('SCFOUNDATION_GENE_INDEX', _DEFAULT_GENE_INDEX)
+        self.ckpt_path = ckpt_path or os.environ.get('SCFOUNDATION_CKPT', str(_DEFAULT_CKPT))
+        self.gene_index_path = gene_index_path or os.environ.get('SCFOUNDATION_GENE_INDEX', str(_DEFAULT_GENE_INDEX))
         self.gene_list = self._load_gene_list()
+        self.genes_matched = None
         self.load_model()
+
+    @property
+    def n_layers_total(self):
+        return len(self.model.encoder.transformer_encoder)
+
+    @property
+    def hidden_dim(self):
+        return self.config.get('encoder_embed_dim') or self.config.get('embed_dim')
 
     def _load_gene_list(self):
         df = pd.read_csv(self.gene_index_path, sep='\t')
@@ -82,6 +95,7 @@ class scFoundationEmbedder(BaseEmbedder):
         adata_new.obs['log_total_count'] = adata_new.obs['log_total_count'].fillna(0)
 
         matched = len([g for g in data_dict.keys() if g in self.gene_list])
+        self.genes_matched = matched
         print(f"scFoundation: matched {matched}/{len(self.gene_list)} genes")
 
         return adata_new
@@ -228,3 +242,5 @@ class scFoundationEmbedder(BaseEmbedder):
     
     def get_all_layer_indices(self):
         return list(range(len(self.model.encoder.transformer_encoder)))
+
+

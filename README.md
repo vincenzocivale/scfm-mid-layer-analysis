@@ -10,7 +10,7 @@ Python 3.9 in un venv gestito con uv:
 .venv/bin/python --version  # Python 3.9.7
 ```
 
-Per scFoundation servono due file (gitignorati) nella cartella `models/`:
+Per scFoundation servono due file (gitignorati) in `data/checkpoints/scfoundation/`:
 - `models.ckpt` (~1.4 GB)
 - `OS_scRNA_gene_index.19264.tsv`
 
@@ -72,14 +72,13 @@ Output CSV in `data/{classification,pseudotime}_results/` e `data/perturbation_m
 ## Layout
 
 ```
-models/                          # embedder per ogni modello foundation
-cell_type_classification_benchmark/
-perturbation_analysis/
-pseudo_time_benchmark/           # ogni pacchetto: preprocessing → evaluator → pipeline
-scripts/                         # launcher CLI argparse
+src/scfm_eval/                   # library: embedders, benchmarks, extraction, io
+scripts/                         # CLI entry points (argparse)
+config/                          # YAML registries: models, datasets, experiments
+docs/                            # documentazione architetturale per il paper
 run_embedding_extraction.sh      # orchestratore stage 1
-notebooks/                       # EDA e prototipi
-data/                            # input raw, embedding, risultati (gitignored)
+notebooks/                       # EDA + paper_figures.ipynb
+data/                            # input, checkpoints, embeddings, results (gitignored)
 ```
 
-Per maggiori dettagli sull'architettura interna vedi `CLAUDE.md`.
+Per dettagli architetturali vedi `docs/` (start `docs/README.md`) e `CLAUDE.md`.

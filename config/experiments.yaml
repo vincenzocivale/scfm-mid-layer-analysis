@@ -1,0 +1,66 @@
+# Experiment grid for the paper.
+#
+# Each `run` declares: which dataset, which model (+optional size), and which
+# downstream tasks to evaluate. The driver (scripts/run_experiment_grid.py)
+# resolves task-specific config from config/datasets.yaml.
+#
+# Reorder/comment-out runs to control which subset of the grid is executed.
+# Use --filter on the CLI for ad-hoc selection without editing this file.
+
+runs:
+
+  # ── Cell-type classification: brain × {scfoundation, tahoe-1b} ─────────────
+  - dataset: brain
+    model: scfoundation
+    tasks: [classification]
+
+  - dataset: brain
+    model: tahoe
+    model_size: 1b
+    tasks: [classification]
+
+  - dataset: spinal
+    model: scfoundation
+    tasks: [classification]
+
+  - dataset: spinal
+    model: tahoe
+    model_size: 1b
+    tasks: [classification]
+
+  - dataset: liver
+    model: scfoundation
+    tasks: [classification]
+
+  - dataset: liver
+    model: tahoe
+    model_size: 1b
+    tasks: [classification]
+
+  # ── Pseudotime ─────────────────────────────────────────────────────────────
+  - dataset: GSE276896
+    model: scfoundation
+    tasks: [pseudotime]
+
+  - dataset: GSE276896
+    model: tahoe
+    model_size: 1b
+    tasks: [pseudotime]
+
+  # ── Perturbation response ──────────────────────────────────────────────────
+  - dataset: D1_Stim8hr
+    model: scfoundation
+    tasks: [perturbation]
+
+  # Add Tahoe / scgpt / geneformer runs as the models become available.
+
+# Stage-1 defaults (overridable per-run if needed)
+extraction_defaults:
+  scfoundation:
+    chunk_size: 20000
+    batch_size: 1
+    fp16: true
+  tahoe:
+    chunk_size: 50000
+    batch_size: 16
+    fp16: true

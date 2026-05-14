@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scfm-eval"
+version = "0.1.0"
+description = "Per-layer evaluation of single-cell foundation models on zero-shot tasks"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+# Runtime deps are managed in the existing .venv (uv-installed). This is a
+# minimal manifest so `pip install -e .` works for the source layout.
+dependencies = [
+    "anndata",
+    "scanpy",
+    "scipy",
+    "scikit-learn",
+    "pandas",
+    "numpy",
+    "torch",
+    "tqdm",
+    "pyyaml",
+    "h5py",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"scfm_eval" = ["**/*.yaml"]

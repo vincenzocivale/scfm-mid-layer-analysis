@@ -4,75 +4,132 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A benchmarking framework that compares how the **per-layer hidden states** of single-cell foundation models (scFoundation, Tahoe-X1, optionally scGPT) represent biology. The same set of embeddings (one per transformer layer of one model on one dataset) is fed through three independent evaluation pipelines: cell-type classification, pseudo-time inference, and perturbation response. Code comments and CLI help strings are mostly in Italian.
+A benchmarking framework that compares how the **per-layer hidden states** of single-cell foundation models (scFoundation, Tahoe-X1, planned: scGPT/Geneformer) represent biology. The same set of embeddings (one per transformer layer of one model on one dataset) is fed through three independent evaluation pipelines: cell-type classification, pseudo-time inference, and perturbation response. Code comments and CLI help strings are mostly in Italian.
+
+For paper-grade documentation see `docs/` (start with `docs/README.md`).
 
 ## Environment
 
-- Python 3.9 in `.venv/` (uv-managed; no `pyproject.toml` is checked in).
-- Always invoke `./.venv/bin/python` (or activate the venv) — system Python will not have `tahoe_x1`, `scanpy`, `cuml`, etc.
-- GPU is optional. `inference.py` is hardcoded to CPU; the embedder scripts auto-detect CUDA and use `fp16` on GPU by default (`--no-fp16` to disable). PCA preprocessing optionally uses `cupy`/`cuml` when available.
+- Python 3.9 in `.venv/` (uv-managed; `pyproject.toml` declares the source layout).
+- Either `./.venv/bin/pip install -e .` once, or rely on the `PYTHONPATH=src` injection in the shell/scripts. Both work.
+- GPU optional. `fp16` is the default on CUDA; pass `--no-fp16` to disable.
 
-## Workflow: extract embeddings, then benchmark
+## Repository layout
 
-The two stages are **decoupled by h5ad files**: extraction writes per-layer embeddings into `adata.obsm['X_layer_{i}']`, and every benchmark pipeline discovers them by that prefix. Treat that prefix as a contract — changing it breaks all three benchmarks.
+```
+src/scfm_eval/                   # the only place library code lives
+  embedders/                     # per-FM wrappers + base ABC + lazy registry
+    base.py                      # BaseEmbedder ABC
+    registry.py                  # name → class (lazy import; no torch at package import)
+    scfoundation.py
+    tahoe.py
+    vendor/scfoundation/         # vendored upstream scFoundation code, isolated
+  benchmarks/                    # downstream evaluation packages
+    classification/  pseudotime/  perturbation/    # each: preprocessing → evaluator → pipeline
+  extraction/
+    chunked.py                   # `python -m scfm_eval.extraction.chunked` does stage 1
+    model_info.py                # n_layers helper
+  io/
+    embeddings.py                # write/read embedded h5ads with structured metadata
+    results.py                   # canonical CSV paths/writers for the 3 tasks
 
-### Stage 1 — extract embeddings
+scripts/                         # CLI entry points (argparse → calls into scfm_eval)
+  run_cell_type_classification.py
+  run_perturbation_analysis.py
+  run_pseudotime_analysis.py
+  merge_chunks.py                # consolidate per-chunk h5ads into one
+  aggregate_results.py           # produce data/results_all.csv long-format
+  run_experiment_grid.py         # driver: reads config/experiments.yaml
 
-The orchestrator shell script auto-detects the number of layers from `models/get_model_info.py`, then loops layers through the chunked extractor. Inputs are positional; flags pass through; config is via env vars.
+config/                          # YAML registries (versioned)
+  models.yaml  datasets.yaml  experiments.yaml
 
-```bash
-MODELS=scfoundation CHUNK_SIZE=20000 BATCH_SIZE=1 \
-  ./run_embedding_extraction.sh data/raw/brain_dataset.h5ad
+docs/                            # paper-grade docs (architecture, models, datasets, benchmarks, ...)
 
-# Tahoe variant — TAHOE_MODEL_SIZE picks 70m / 1b / 3b
-MODELS=tahoe TAHOE_MODEL_SIZE=1b CHUNK_SIZE=50000 BATCH_SIZE=16 \
-  ./run_embedding_extraction.sh data/raw/liver_dataset.h5ad --no-fp16
+data/                            # gitignored
+  raw/                           # input h5ads
+  checkpoints/scfoundation/      # models.ckpt + gene-index TSV (gitignored)
+  embeddings/                    # output of stage 1 (per-chunk h5ads + optional merged)
+  classification_results/  pseudotime_results/  perturbation_metrics/
+  results_all.csv                # output of aggregate_results.py
+  run_manifest.csv               # output of run_experiment_grid.py
+
+run_embedding_extraction.sh      # stage-1 orchestrator (loops inputs × models)
+notebooks/
 ```
 
-Outputs land in `data/embeddings/<input>_<model>[_<size>]/`.
+## Workflow
 
-### Stage 2 — run a benchmark on an embedding h5ad
+```
+                   STAGE 1                                STAGE 2
+                   ───────                                ───────
+   raw h5ad   ─►  embedder.extract  ─►   embedded h5ad   ─►  pipeline.run_*()  ─►  CSV
+              ─►  (chunked, all layers)      X_layer_{i}        (per-task evaluator)    metrics
 
-Each pipeline lives in its own package (`cell_type_classification_benchmark/`, `pseudo_time_benchmark/`, `perturbation_analysis/`) and follows the same three-file layout: `preprocessing.py` → `evaluator.py` → `pipeline.py` exposes a single `run_*` function. The argparse launchers under `scripts/` are thin wrappers over those functions.
-
-```bash
-./.venv/bin/python scripts/run_cell_type_classification.py \
-  --input data/embeddings/brain_dataset_scfoundation_embeddings.h5ad \
-  --cell_type_column cell_type
-
-./.venv/bin/python scripts/run_pseudotime_analysis.py \
-  --input data/embeddings/GSE276896_..._timeordered.h5ad \
-  --time_column week
-
-./.venv/bin/python scripts/run_perturbation_analysis.py \
-  --input data/embeddings/D1_Stim8hr...scfoundation_embeddings.h5ad \
-  --output_dir data/perturbation_metrics --perturb_key gene_name --control_label control
+                       │                          │                 │
+                       │                          │                 ▼
+                       │                          │            aggregate_results.py
+                       │                          │                 │
+                       ▼                          ▼                 ▼
+              data/embeddings/         data/<task>_results/    data/results_all.csv
+                                                                    │
+                                                                    ▼
+                                                           notebooks/paper_figures.ipynb
 ```
 
-All three default to discovering layer embeddings by `--embedding_prefix X_layer` and writing CSVs into `data/{classification,pseudotime,perturbation_metrics}_results/`. The classification pipeline additionally builds an `X_pca` baseline from `adata.raw` (HVG → PCA) and renames it `Baseline_PCA` in the output.
+### Running the full grid
 
-## Architecture: the embedder layer
+```bash
+./.venv/bin/python scripts/run_experiment_grid.py
+./.venv/bin/python scripts/aggregate_results.py
+```
 
-`models/base_embedder.py` defines `BaseEmbedder` (abstract). Each concrete embedder (`scfoundation_embedder.py`, `tahoe_embedder.py`, optional `scgpt_embedder.py`) must implement `load_model`, `prepare_data`, `get_all_layer_indices`, and **must** override `extract_embeddings_for_layers(adata, layer_indices, batch_size) → {layer_idx: np.ndarray}`.
+### Single cell of the grid
 
-The pattern for multi-layer extraction is **forward hooks on transformer blocks** (see `TahoeEmbedder.extract_embeddings_for_layers`) so all requested layers come out of a single forward pass. `extract_embeddings_chunked_all_layers.py` then drives this chunk-by-chunk over a `backed='r'` AnnData to keep RAM bounded.
+```bash
+# Stage 1
+MODELS=scfoundation ./run_embedding_extraction.sh data/raw/brain_dataset.h5ad
+./.venv/bin/python scripts/merge_chunks.py --input-dir data/embeddings/brain_dataset_scfoundation/
 
-Model-specific gotchas:
+# Stage 2 (any of)
+./.venv/bin/python scripts/run_cell_type_classification.py --input <merged.h5ad> --cell_type_column cell_type
+./.venv/bin/python scripts/run_pseudotime_analysis.py     --input <merged.h5ad> --time_column week
+./.venv/bin/python scripts/run_perturbation_analysis.py   --input <merged.h5ad> --output_dir data/perturbation_metrics --perturb_key gene_name --control_label non-targeting
+```
 
-- **scFoundation**: weight/gene-index paths default to `models/models.ckpt` and `models/OS_scRNA_gene_index.19264.tsv` (relative to `scfoundation_embedder.py`). Override via constructor args or env vars `SCFOUNDATION_CKPT` / `SCFOUNDATION_GENE_INDEX`. `prepare_data` remaps `adata.var_names` (Ensembl) to the 19,264 scFoundation gene-symbol vocabulary and zero-pads missing genes. It also requires/computes `obs['log_total_count']`.
-- **Tahoe**: loads weights from HF (`tahoebio/tahoe-x1`) at init; `prepare_data` filters genes to the vocabulary by name.
-- `models/load.py` is vendored from BioMap and provides `load_model_frommmf`, `gatherData`, etc. Don't edit unless touching scFoundation loading specifically.
+## The `X_layer_*` contract
+
+The synchronization point between stage 1 and stage 2 is `adata.obsm['X_layer_{i}']`. Every benchmark auto-discovers layers via `[k for k in adata.obsm if k.startswith('X_layer')]`. Don't rename this.
+
+Stage 1 also writes structured metadata in `adata.uns['layer_embeddings']` (see `src/scfm_eval/io/embeddings.py` for the canonical schema). Critical fields: `n_layers_total`, `hidden_dim`, `pooling`, `expected_input`, `genes_matched`. These flow into `results_all.csv` so the paper plots can normalize by `relative_depth = layer / (n_layers_total - 1)` and compare models with different depth.
+
+## Layer numbering semantics
+
+`X_layer_i` = output of the i-th transformer block, after pooling. Pooling is model-specific:
+
+| Model | Hook | Pooling |
+|---|---|---|
+| scFoundation | inline iteration of `encoder.transformer_encoder[i]` | `x[:, -1, :]` (S-token) |
+| Tahoe-X1     | `register_forward_hook` on `transformer_encoder.layers[i]` | `output[:, 0, :]` (CLS) |
+
+Layer 0 is post-first-block (not the embedding layer). Add a layer-naming sanity check before publishing.
+
+## Adding things
+
+- **New model**: see `docs/adding_a_model.md`. The lazy registry in `src/scfm_eval/embedders/registry.py` is the single place to wire it.
+- **New benchmark**: see `docs/adding_a_benchmark.md`. Mirror an existing package under `src/scfm_eval/benchmarks/<task>/`, register the task in `src/scfm_eval/io/results.py` (`TASK_OUTPUT_DIRS`, `TASK_SUFFIX`) and in `scripts/run_experiment_grid.py` (`TASK_LAUNCHERS`).
+- **New dataset**: declare in `config/datasets.yaml`. The driver will pick it up automatically when a run references it in `config/experiments.yaml`.
 
 ## Conventions to preserve
 
-- **Embedding keys**: `adata.obsm['X_layer_{i}']` for layer `i`. Metadata summary lives in `adata.uns['layer_embeddings']` (keys: `model`, `n_layers`, `layer_keys`).
-- **Output paths**: pipelines compute `<input_stem>_results.csv` (or `_classification_results.csv`) inside their default `--output_dir`. The input file's stem is the canonical run identifier — don't rename embedding files mid-experiment.
-- **Adding a new model**: subclass `BaseEmbedder`, register it in the two `if model == ...` branches (`get_model_info.py`, `extract_embeddings_chunked_all_layers.py`). Layer indices returned by `get_all_layer_indices()` must match the indices the hook-based extractor will register on.
-- **Adding a new benchmark**: mirror the existing package layout (`preprocessing.py`, `evaluator.py`, `pipeline.py` with a `run_*` entry point), discover layers via `[k for k in adata.obsm if k.startswith(embedding_prefix)]`, and ship a `scripts/run_<name>.py` launcher that prepends the repo root to `sys.path`.
+- **Embedding output naming**: stage 1 writes `data/embeddings/<input_stem>_<model>[_<size>]/chunk_NNNN.h5ad`. `scripts/merge_chunks.py` produces `<input_stem>_<model>[_<size>].h5ad` in the same directory.
+- **Result naming**: `<merged_h5ad_stem><task_suffix>.csv` per `src/scfm_eval/io/results.py`. The aggregator parses these via `config/models.yaml` + `config/datasets.yaml`, so don't hand-rename them.
+- **Subprocess per (model, dataset)** in the driver — gives clean GPU memory between runs and natural isolation.
+- **Italian comments OK** in legacy code; new code prefers English (more searchable). Don't translate existing comments unless touching the surrounding code.
 
-## Data layout
+## Don't
 
-- `data/raw/` — input h5ad files (datasets sourced from CellxGene, see `README.md`).
-- `data/embeddings/` — output of stage 1 (one h5ad per chunk under `<input>_<model>[_<size>]/`).
-- `data/{classification,pseudotime}_results/`, `data/perturbation_metrics/` — output CSVs of stage 2.
-- `models/models.ckpt` and `models/OS_scRNA_gene_index.19264.tsv` are gitignored (`*.ckpt`, `*.tsv`) — they must be present locally for scFoundation to load.
+- Don't add `sys.path` hacks to library code under `src/scfm_eval/`. Library code uses package-relative imports. Only `scripts/*.py` may inject `src/` into sys.path.
+- Don't import torch / tahoe_x1 at package-import time. Keep them inside class methods or behind the lazy registry, so `from scfm_eval import ...` in a CPU-only analysis context stays fast.
+- Don't hardcode absolute paths to weights. Use `data/checkpoints/<model>/` defaults overridable via env vars (`SCFOUNDATION_CKPT`, etc.).
+- Don't leave debug/exploratory scripts in `scripts/` or `notebooks/` after the task is done — remove them.
