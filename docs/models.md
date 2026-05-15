@@ -11,6 +11,7 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 | scGPT | unica | 12** | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
 | CellFM | unica | 40 | mean non-zero genes | raw counts, CellFM gene vocab | Implementato |
 | UCE | 4layer / 33layer | 4 / 33 | CLS token (`x[0, :, :]`, seq-first) | raw counts, ESM2 protein vocab | Implementato |
+| GeneCompass | unica | 12 | CLS token (`x[:, 0, :]`) | raw counts, Ensembl IDs (~45k human+mouse) | Implementato |
 | Geneformer | varia | TBD | mean pooling (tipico) | rank-ordered tokens | **Da implementare** |
 
 *Il numero di layer di Tahoe va verificato a runtime con `python src/scfm_eval/extraction/model_info.py --model tahoe --tahoe_size <size>`.
@@ -94,6 +95,24 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 - **Layer hook**: `register_forward_hook` on `model.transformer_encoder.layers[i]`.  Extracts `output[0, :, :]` (CLS token, position 0, seq-first) → shape `(batch, 1280)`.
 - **Pooling**: CLS token at position 0.  Pre-decoder output (unlike the published UCE embedding which applies an additional MLP decoder); consistent with the `X_layer_i` convention in this framework.
 - **n_layers_total**: 4 (default pretrained model) or 33 (larger variant).  Verified at runtime via `len(model.transformer_encoder.layers)`.
+
+## GeneCompass
+
+- **Paper**: Chen B. et al., *GeneCompass: Deciphering Universal Gene Regulatory Logic by Integrating Multi-species Single-Cell RNA Sequencing Data*, Cell 2024.
+- **Code**: vendored in `src/scfm_eval/embedders/vendor/genecompass/` (from the GeneCompass GitHub repo, Apache-2.0 licence). Fix applied: `ContinuousValueEncoder.forward()` used `.cuda()` unconditionally — replaced with `.to(device=self.linear1.weight.device, dtype=torch.float32)`.
+- **Weights**: `data/checkpoints/genecompass/config.json` + `pytorch_model.bin`. Download from the GeneCompass HuggingFace repository. Path overridable via `GENECOMPASS_CKPT` env var.
+- **Prior knowledge**: `data/checkpoints/genecompass/prior_knowledge/` — contains promoter sequence embeddings, gene co-expression embeddings, gene family embeddings, and PECA GRN embeddings (768-dim each). Required only if the checkpoint config has `use_promoter/use_co_exp/use_gene_family/use_peca_grn=True`. The LFS-tracked pickle files (~88 MB each) must be pulled with `git lfs pull` from the GeneCompass repo. Override path with `GENECOMPASS_PRIOR_DIR`.
+- **Architecture**: BERT-base (12 transformer layers, hidden_size=768, 12 heads, intermediate_size=3072, max_position_embeddings=2048). Custom embedding layer (`KnowledgeBertEmbeddings`) integrates word embeddings + value encoding + up to 4 knowledge projections. A learned CLS token is prepended.
+- **Environment dedicato**: usare `conda activate genecompass-env` (creato da `envs/genecompass.yml`). Richiede `transformers==4.30.0` (locked for HF API compatibility with BertEncoder/BertPooler imports).
+- **Preprocessing** (`prepare_data`):
+  1. Matches `adata.var_names` to Ensembl IDs in the token dictionary (`h&m_token1000W.pickle`).
+  2. Matching priority: var_names starting with `ENSG`/`ENSMUSG`, then `adata.var['ensembl_id']`, then `adata.var['feature_id']`, then direct var_name lookup (with warning).
+  3. Filters to matched genes; sets `adata.var['gc_token_id']`.
+- **Forward pass**: genes are encoded as (token_id, expression_value) pairs. Expression values are clipped to max 255 by `ContinuousValueEncoder`. A CLS embedding (species-specific, `species=0` for human) is prepended at position 0 by `BertModel.forward()` before passing to the encoder.
+- **Layer hook**: `register_forward_hook` on `model.bert.encoder.layer[i]` (a standard HuggingFace `BertLayer`). Output is a tuple; first element is hidden-states `(batch, seq_len+1, 768)`. CLS token is extracted as `output[0][:, 0, :]`.
+- **Pooling**: CLS token at position 0 (when `use_cls_token=True`, which is the standard pre-trained config).
+- **n_layers_total**: `model.bert.config.num_hidden_layers` = 12.
+- **max_input_size**: defaults to 1000 genes per cell (constructor arg `max_input_size`). Genes above this limit are truncated by descending expression. The model supports up to `max_position_embeddings - 1 = 2047` genes.
 
 ## Geneformer (placeholder, non implementato)
 

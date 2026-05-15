@@ -1,0 +1,56 @@
+# Conda environment for GeneCompass intermediate embedding extraction.
+#
+# Create:  conda env create -f envs/genecompass.yml
+# Activate: conda activate genecompass-env
+#
+# Post-create (run once after activation):
+#   pip install -e .
+#
+# Checkpoint setup (run once):
+#   # 1. Download pre-trained weights (config.json + pytorch_model.bin) from the
+#   #    GeneCompass HuggingFace repository and place them under:
+#   #      data/checkpoints/genecompass/
+#   #
+#   # 2. Copy / symlink the prior_knowledge/ directory from the GeneCompass repo
+#   #    (after running `git lfs pull` there) to:
+#   #      data/checkpoints/genecompass/prior_knowledge/
+#   #
+#   # 3. The token dictionary (h&m_token1000W.pickle) and homologous_hm_token.pickle
+#   #    are small enough to commit; the embedding pickles (promoter_emb/,
+#   #    gene_co_express_emb/, gene_family/, PECA2vec/) are Git-LFS tracked and
+#   #    must be downloaded separately.
+
+name: genecompass-env
+
+channels:
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+
+  - pip:
+    # PyTorch with CUDA 12.1
+    - torch==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+    - torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cu121
+
+    # HuggingFace — must match GeneCompass upstream requirements.
+    - transformers==4.30.0
+    - accelerate>=0.32.1
+    - datasets>=2.12,<3
+
+    # Core scientific Python
+    - numpy>=1.23,<2
+    - pandas>=1.5
+    - scipy>=1.9
+    - scikit-learn>=1.1
+    - matplotlib>=3.5
+    - tqdm>=4.60
+    - h5py>=3.7
+
+    # Single-cell
+    - anndata>=0.9
+    - scanpy>=1.9.1,<2.0.0
+
+    # This repo (installs scfm_eval package)
+    - -e .

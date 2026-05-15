@@ -66,6 +66,26 @@ models:
       Use conda activate uce-env (envs/uce.yml).  For the 33-layer variant set
       UCE_MODEL_CKPT to the 33layer_model.torch path and pass nlayers=33.
 
+  genecompass:
+    class: scfm_eval.embedders.genecompass.GeneCompassEmbedder
+    sizes: [default]
+    expected_input: raw_counts
+    gene_vocab: genecompass_ensembl    # Ensembl IDs (ENSG / ENSMUSG), ~45k human+mouse tokens
+    pooling: cls_token                 # cell embedding = encoder_layer_i_output[:, 0, :] (CLS token)
+    env_vars:
+      GENECOMPASS_CKPT: data/checkpoints/genecompass     # dir with config.json + pytorch_model.bin
+      GENECOMPASS_PRIOR_DIR: data/checkpoints/genecompass/prior_knowledge  # prior knowledge pickles
+    notes: >
+      Code vendored from GeneCompass (Chen et al., Cell 2024).
+      Use conda activate genecompass-env (envs/genecompass.yml).
+      Download the pre-trained checkpoint from the GeneCompass HuggingFace repo
+      and place config.json + pytorch_model.bin under data/checkpoints/genecompass/.
+      Prior knowledge pickles (promoter_emb/, gene_co_express_emb/, gene_family/,
+      PECA2vec/) must be downloaded via git lfs pull from the GeneCompass repo and
+      placed under data/checkpoints/genecompass/prior_knowledge/.
+      Only needed if the checkpoint config has use_promoter/use_co_exp/use_gene_family/use_peca_grn=True.
+      The token dictionary (h&m_token1000W.pickle) is always required.
+
   geneformer:
     class: scfm_eval.embedders.geneformer.GeneformerEmbedder   # NOT YET PRESENT
     sizes: [6L, 12L, 30M]
