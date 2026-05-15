@@ -92,82 +92,100 @@ class GeneCompassEmbedder(BaseEmbedder):
             if k not in ("<pad>", "<mask>")
         }
 
-    def _load_knowledges(self, config_dict: dict) -> dict:
-        """Load prior-knowledge tensors required by KnowledgeBertEmbeddings."""
-        self._ensure_vendor_on_path()
-        from genecompass.utils import load_prior_embedding
+    def _knowledges_from_checkpoint(self, state_dict: dict) -> dict:
+        """Extract prior-knowledge tensors directly from the checkpoint state dict.
 
-        uses_knowledge = any(
-            config_dict.get(k, False)
-            for k in ("use_promoter", "use_co_exp", "use_gene_family", "use_peca_grn")
-        )
-        if not uses_knowledge:
-            return {}
-
-        prior = self.prior_dir
-        out = load_prior_embedding(
-            name2promoter_human_path=str(prior / "promoter_emb" / "human_emb_768.pickle"),
-            name2promoter_mouse_path=str(prior / "promoter_emb" / "mouse_emb_768.pickle"),
-            name2coexp_human_path=str(prior / "gene_co_express_emb" / "Human_dim_768_gene_28291_random.pickle"),
-            name2coexp_mouse_path=str(prior / "gene_co_express_emb" / "Mouse_dim_768_gene_27444_random.pickle"),
-            name2family_human_path=str(prior / "gene_family" / "Human_dim_768_gene_28291_random.pickle"),
-            name2family_mouse_path=str(prior / "gene_family" / "Mouse_dim_768_gene_27934_random.pickle"),
-            name2peca_human_path=str(prior / "PECA2vec" / "human_PECA_vec.pickle"),
-            name2peca_mouse_path=str(prior / "PECA2vec" / "mouse_PECA_vec.pickle"),
-            id2name_human_mouse_path=str(prior / "gene_list" / "Gene_id_name_dict_human_mouse.pickle"),
-            token_dictionary_or_path=self.token_dictionary,
-            homologous_gene_path=str(prior / "homologous_hm_token.pickle"),
-        )
-        return {
-            "promoter": out[0],
-            "co_exp": out[1],
-            "gene_family": out[2],
-            "peca_grn": out[3],
-            "homologous_gene_human2mouse": out[4],
+        The GeneCompass checkpoint already contains the pre-built knowledge buffers
+        (promoter_knowledge, co_exp_knowledge, gene_family_knowledge, peca_grn_knowledge,
+        homologous_index) at their final shape.  Extracting them here avoids requiring
+        the large LFS-tracked pickle files from the original repository.
+        """
+        required = {
+            "promoter": "bert.embeddings.promoter_knowledge",
+            "co_exp":   "bert.embeddings.co_exp_knowledge",
+            "gene_family": "bert.embeddings.gene_family_knowledge",
+            "peca_grn": "bert.embeddings.peca_grn_knowledge",
         }
+        missing = [v for v in required.values() if v not in state_dict]
+        if missing:
+            raise KeyError(
+                f"GeneCompass checkpoint is missing knowledge buffers: {missing}. "
+                "This checkpoint may have been saved without prior knowledge."
+            )
+        # homologous_gene_human2mouse is passed as an empty dict because the
+        # homologous_index buffer is loaded directly from the state dict below.
+        return {
+            "promoter":  state_dict["bert.embeddings.promoter_knowledge"],
+            "co_exp":    state_dict["bert.embeddings.co_exp_knowledge"],
+            "gene_family": state_dict["bert.embeddings.gene_family_knowledge"],
+            "peca_grn":  state_dict["bert.embeddings.peca_grn_knowledge"],
+            "homologous_gene_human2mouse": {},
+        }
+
+    def _config_from_checkpoint(self, state_dict: dict):
+        """Derive a corrected BertConfig from the actual weight shapes in the checkpoint.
+
+        The config.json shipped with some GeneCompass releases contains wrong values
+        (e.g. hidden_size=256 while the weights are 768-dim).  We override the critical
+        architectural fields by inspecting the state dict directly.
+        """
+        from transformers import BertConfig
+
+        q_weight = state_dict["bert.encoder.layer.0.attention.self.query.weight"]
+        hidden = q_weight.shape[0]
+        import re as _re
+        layer_nums = {
+            int(m.group(1))
+            for k in state_dict
+            for m in [_re.match(r"bert\.encoder\.layer\.(\d+)\.", k)]
+            if m
+        }
+        n_layers = max(layer_nums) + 1 if layer_nums else 12
+        intermediate = state_dict["bert.encoder.layer.0.intermediate.dense.bias"].shape[0]
+        vocab = state_dict["bert.embeddings.word_embeddings.weight"].shape[0]
+
+        # Start from file config for non-architectural fields (dropout, etc.)
+        cfg_path = self.model_dir / "config.json"
+        config = BertConfig.from_pretrained(str(self.model_dir)) if cfg_path.exists() else BertConfig()
+
+        config.hidden_size = hidden
+        config.num_hidden_layers = n_layers
+        # Standard BERT uses head_dim = 64; infer nheads accordingly.
+        config.num_attention_heads = hidden // 64
+        config.intermediate_size = intermediate
+        config.vocab_size = vocab
+        config.max_position_embeddings = state_dict[
+            "bert.embeddings.position_embeddings.weight"
+        ].shape[0]
+        return config
 
     def load_model(self):
         self._ensure_vendor_on_path()
         from genecompass.modeling_bert import BertForMaskedLM
-        from transformers import BertConfig
 
         self._load_token_dictionary()
 
-        for path, desc in [
-            (self.model_dir / "config.json", "config.json"),
-            (self.model_dir / "pytorch_model.bin", "pytorch_model.bin"),
-        ]:
-            if not path.exists():
-                raise FileNotFoundError(
-                    f"GeneCompass checkpoint file not found: {path}\n"
-                    "Download the pre-trained model to "
-                    f"{self.model_dir} or set GENECOMPASS_CKPT."
-                )
-
-        config = BertConfig.from_pretrained(str(self.model_dir))
-        config_dict = config.to_dict()
-
-        # Inject token dictionary size if not already set correctly.
-        if config_dict.get("vocab_size") != len(self.token_dictionary):
-            warnings.warn(
-                f"GeneCompass: config vocab_size={config_dict.get('vocab_size')} "
-                f"!= token_dictionary size={len(self.token_dictionary)}. "
-                "Using config value."
+        weights_path = self.model_dir / "pytorch_model.bin"
+        if not weights_path.exists():
+            raise FileNotFoundError(
+                f"GeneCompass checkpoint not found: {weights_path}\n"
+                f"Download pytorch_model.bin to {self.model_dir} or set GENECOMPASS_CKPT."
             )
 
-        knowledges = self._load_knowledges(config_dict)
+        state_dict = torch.load(weights_path, map_location="cpu")
+
+        config = self._config_from_checkpoint(state_dict)
+        knowledges = self._knowledges_from_checkpoint(state_dict)
+
         self.model = BertForMaskedLM(config, knowledges)
 
-        state_dict = torch.load(
-            self.model_dir / "pytorch_model.bin", map_location="cpu"
-        )
         missing, unexpected = self.model.load_state_dict(state_dict, strict=False)
         if missing:
             warnings.warn(f"GeneCompass: {len(missing)} missing keys in checkpoint.")
         if unexpected:
             warnings.warn(f"GeneCompass: {len(unexpected)} unexpected keys in checkpoint.")
 
-        self._use_cls_token = config_dict.get("use_cls_token", True)
+        self._use_cls_token = config.to_dict().get("use_cls_token", True)
 
         dtype = torch.float16 if (self.device.type == "cuda" and self.fp16) else torch.float32
         self.model = self.model.to(device=self.device, dtype=dtype)

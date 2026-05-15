@@ -145,7 +145,10 @@ class KnowledgeBertEmbeddings(nn.Module):
 
         if self.use_promoter or self.use_co_exp or self.use_gene_family or self.use_peca_grn:
             homologous_index = torch.arange(token_num)
-            homologous_index[list(self.homologous_gene_human2mouse.keys())] = torch.as_tensor(list(self.homologous_gene_human2mouse.values()))
+            if self.homologous_gene_human2mouse:
+                homologous_index[list(self.homologous_gene_human2mouse.keys())] = torch.as_tensor(
+                    list(self.homologous_gene_human2mouse.values()), dtype=torch.long
+                )
         self.register_buffer('homologous_index', homologous_index)
 
     def forward(
