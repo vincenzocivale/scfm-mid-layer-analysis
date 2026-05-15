@@ -11,7 +11,7 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 | scGPT | unica | 12** | CLS token (`x[:, 0, :]`) | raw counts, vocab scGPT | Implementato |
 | CellFM | unica | 40 | mean non-zero genes | raw counts, CellFM gene vocab | Implementato |
 | UCE | 4layer / 33layer | 4 / 33 | CLS token (`x[0, :, :]`, seq-first) | raw counts, ESM2 protein vocab | Implementato |
-| GeneCompass | unica | 12 | CLS token (`x[:, 0, :]`) | raw counts, Ensembl IDs (~45k human+mouse) | Implementato |
+| GeneCompass | unica | 12 | CLS token (`x[:, 0, :]`) | raw counts, Ensembl IDs (~45k human+mouse, vocab 50k) | Implementato |
 | Geneformer | varia | TBD | mean pooling (tipico) | rank-ordered tokens | **Da implementare** |
 
 *Il numero di layer di Tahoe va verificato a runtime con `python src/scfm_eval/extraction/model_info.py --model tahoe --tahoe_size <size>`.
@@ -99,20 +99,24 @@ Per ogni FM documentiamo: come carica i pesi, come prepara i dati, qual è la se
 ## GeneCompass
 
 - **Paper**: Chen B. et al., *GeneCompass: Deciphering Universal Gene Regulatory Logic by Integrating Multi-species Single-Cell RNA Sequencing Data*, Cell 2024.
-- **Code**: vendored in `src/scfm_eval/embedders/vendor/genecompass/` (from the GeneCompass GitHub repo, Apache-2.0 licence). Fix applied: `ContinuousValueEncoder.forward()` used `.cuda()` unconditionally — replaced with `.to(device=self.linear1.weight.device, dtype=torch.float32)`.
-- **Weights**: `data/checkpoints/genecompass/config.json` + `pytorch_model.bin`. Download from the GeneCompass HuggingFace repository. Path overridable via `GENECOMPASS_CKPT` env var.
-- **Prior knowledge**: `data/checkpoints/genecompass/prior_knowledge/` — contains promoter sequence embeddings, gene co-expression embeddings, gene family embeddings, and PECA GRN embeddings (768-dim each). Required only if the checkpoint config has `use_promoter/use_co_exp/use_gene_family/use_peca_grn=True`. The LFS-tracked pickle files (~88 MB each) must be pulled with `git lfs pull` from the GeneCompass repo. Override path with `GENECOMPASS_PRIOR_DIR`.
-- **Architecture**: BERT-base (12 transformer layers, hidden_size=768, 12 heads, intermediate_size=3072, max_position_embeddings=2048). Custom embedding layer (`KnowledgeBertEmbeddings`) integrates word embeddings + value encoding + up to 4 knowledge projections. A learned CLS token is prepended.
-- **Environment dedicato**: usare `conda activate genecompass-env` (creato da `envs/genecompass.yml`). Richiede `transformers==4.30.0` (locked for HF API compatibility with BertEncoder/BertPooler imports).
+- **Source repo**: https://github.com/xCompass-AI/GeneCompass (Apache-2.0). Code vendored in `src/scfm_eval/embedders/vendor/genecompass/`.
+- **Checkpoint**: `data/checkpoints/genecompass/pytorch_model.bin` + `config.json`. Download from the GeneCompass scidb.cn page (link in the GitHub README). Path overridable via `GENECOMPASS_CKPT` env var.
+- **Architecture (reale, verificata dai pesi)**: 12 transformer layers, hidden_size=768, 12 heads, intermediate_size=3072, max_position_embeddings=2048, vocab_size=50558. Nota: il `config.json` del checkpoint rilasciato contiene valori errati (256-dim/6-layer) — l'embedder li ignora e ricava le dimensioni reali dai pesi tramite `_config_from_checkpoint()`.
+- **Prior knowledge**: 4 tipi di prior knowledge (promoter sequences, gene co-expression, gene family, PECA GRN) a 768 dim ciascuno. I tensori corrispondenti sono già **inclusi nel `pytorch_model.bin`** come buffer registrati (`bert.embeddings.*_knowledge`, shape 50558×768 ciascuno). Non è necessario scaricare i file LFS dal repo originale.
+- **Token dictionary**: `data/checkpoints/genecompass/prior_knowledge/h&m_token1000W.pickle` — 45624 geni (ENSG + ENSMUSG). Copertura ~90% del vocab del modello (50558 token); ~5000 token aggiuntivi nel checkpoint non sono mappabili con questo dict. Per una copertura completa è disponibile un dict più grande tramite la Google Drive del progetto (link nel README del repo).
+- **Environment dedicato**: `conda activate genecompass-env` (creato da `envs/genecompass.yml`). Richiede `transformers>=4.30`.
+- **Bug corretti nell'upstream** (applicati al vendored code):
+  - `ContinuousValueEncoder.forward()`: `.cuda()` hardcodato → `.to(device=..., dtype=torch.float32)`
+  - `KnowledgeBertEmbeddings.__init__()`: `torch.as_tensor([])` crea float vs long → guard sul dict vuoto + cast esplicito
+  - `BertForMaskedLM.forward()`: `loss` usata nell'`else` senza inizializzazione → `loss = None` prima del blocco `if labels`
 - **Preprocessing** (`prepare_data`):
-  1. Matches `adata.var_names` to Ensembl IDs in the token dictionary (`h&m_token1000W.pickle`).
-  2. Matching priority: var_names starting with `ENSG`/`ENSMUSG`, then `adata.var['ensembl_id']`, then `adata.var['feature_id']`, then direct var_name lookup (with warning).
-  3. Filters to matched genes; sets `adata.var['gc_token_id']`.
-- **Forward pass**: genes are encoded as (token_id, expression_value) pairs. Expression values are clipped to max 255 by `ContinuousValueEncoder`. A CLS embedding (species-specific, `species=0` for human) is prepended at position 0 by `BertModel.forward()` before passing to the encoder.
-- **Layer hook**: `register_forward_hook` on `model.bert.encoder.layer[i]` (a standard HuggingFace `BertLayer`). Output is a tuple; first element is hidden-states `(batch, seq_len+1, 768)`. CLS token is extracted as `output[0][:, 0, :]`.
-- **Pooling**: CLS token at position 0 (when `use_cls_token=True`, which is the standard pre-trained config).
-- **n_layers_total**: `model.bert.config.num_hidden_layers` = 12.
-- **max_input_size**: defaults to 1000 genes per cell (constructor arg `max_input_size`). Genes above this limit are truncated by descending expression. The model supports up to `max_position_embeddings - 1 = 2047` genes.
+  1. Matching di `adata.var_names` agli Ensembl ID nel token dictionary. Priorità: var_names `ENSG`/`ENSMUSG`, poi `adata.var['ensembl_id']`, poi `adata.var['feature_id']`, poi fallback con warning.
+  2. Filtra ai geni matched; aggiunge `adata.var['gc_token_id']`.
+- **Forward pass**: geni codificati come coppie (token_id, valore_espressione). I valori vengono concatenati come scalari raw (dim=1) e proiettati da `concat_embeddings` insieme alle 4 knowledge projection. Un token CLS species-specifico (`species=0` per umano) è preposto in posizione 0 da `BertModel.forward()`.
+- **Layer hook**: `register_forward_hook` su `model.bert.encoder.layer[i]` (HuggingFace `BertLayer`). Il primo elemento dell'output è `hidden_states` di shape `(batch, seq_len+1, 768)`. CLS estratto come `output[0][:, 0, :]`.
+- **Pooling**: CLS token in posizione 0.
+- **n_layers_total**: 12 (derivato a runtime da `_config_from_checkpoint()`).
+- **max_input_size**: 1000 geni/cellula (arg costruttore). Geni in eccesso troncati per espressione decrescente. Il modello supporta fino a 2047 geni.
 
 ## Geneformer (placeholder, non implementato)
 
