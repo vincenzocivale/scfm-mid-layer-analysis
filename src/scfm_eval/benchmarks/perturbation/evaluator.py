@@ -1,6 +1,13 @@
+"""Per-layer perturbation evaluator.
+
+CAVEAT (data leakage by construction): the biological reference is the DE matrix
+computed on the *same* counts the FM saw at inference. The semantic-similarity
+score therefore measures how well the embedding *preserves* the DE structure
+derivable from those same counts, not predictive biology. For a stricter
+zero-shot test, supply an external reference (e.g. CMap, MSigDB pathway sim).
 """
-Core evaluator for perturbation analysis.
-"""
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -8,193 +15,171 @@ import torch
 import torch.nn.functional as F
 from scipy.stats import spearmanr
 from tqdm import tqdm
-from typing import Dict, Optional, List
+
+_SEED = 42
+
+
+def _cosine_sim_matrix(M: np.ndarray) -> np.ndarray:
+    t = torch.tensor(M, dtype=torch.float32)
+    return F.cosine_similarity(t.unsqueeze(1), t.unsqueeze(0), dim=-1).cpu().numpy()
+
+
+def _upper_triu(M: np.ndarray) -> np.ndarray:
+    return M[np.triu_indices_from(M, k=1)]
+
 
 class PerturbationEvaluator:
-    """
-    Evaluates the quality of embeddings based on how they represent
-    biological perturbations.
-    """
-    def __init__(self, adata: sc.AnnData, perturb_key: str, control_label: str = 'control'):
-        """
-        Args:
-            adata: AnnData object containing embeddings.
-            perturb_key: Column in .obs with perturbation labels.
-            control_label: Label for control cells.
-        """
+    def __init__(self, adata: sc.AnnData, perturb_key: str, control_label: str = 'control',
+                 min_cells_per_perturb: int = 10, seed: int = _SEED):
         self.adata = adata
         self.perturb_key = perturb_key
         self.control_label = control_label
-        
-        # Find layer embeddings
-        self.layer_keys = sorted([
-            k for k in self.adata.obsm.keys() 
-            if k.startswith('X_layer_') or k.startswith('X_scgpt_')
-        ], key=lambda x: int(x.split('_')[-1]))
+        self.seed = seed
 
+        self.layer_keys = sorted(
+            [k for k in adata.obsm.keys() if k.startswith('X_layer_') or k.startswith('X_scgpt_')],
+            key=lambda x: int(x.split('_')[-1]),
+        )
         if not self.layer_keys:
-            raise ValueError("No layer embeddings found in adata.obsm (e.g., 'X_layer_1').")
+            raise ValueError("No layer embeddings (X_layer_* or X_scgpt_*) in adata.obsm")
 
-        # Get valid perturbations
-        perturb_counts = self.adata.obs[self.perturb_key].value_counts()
+        counts = adata.obs[perturb_key].value_counts()
         self.perturbations = sorted([
-            p for p in perturb_counts.index 
-            if pd.notna(p) and p != self.control_label and perturb_counts[p] >= 5
+            p for p in counts.index
+            if pd.notna(p) and p != control_label and counts[p] >= min_cells_per_perturb
         ])
 
     def _compute_centroids(self, layer_key: str) -> pd.DataFrame:
-        """Computes centroids for all perturbations in a given layer."""
-        embeddings = self.adata.obsm[layer_key]
+        emb = self.adata.obsm[layer_key]
         labels = self.adata.obs[self.perturb_key].values
-        
-        centroids = []
-        for perturb in self.perturbations:
-            mask = (labels == perturb)
-            centroids.append(embeddings[mask].mean(axis=0))
-        
-        return pd.DataFrame(np.array(centroids), index=self.perturbations)
+        rows = [emb[labels == p].mean(axis=0) for p in self.perturbations]
+        return pd.DataFrame(np.vstack(rows), index=self.perturbations)
 
-    def _compute_centroid_similarity(self, centroids: pd.DataFrame) -> pd.DataFrame:
-        """Computes cosine similarity between centroids."""
-        centroids_tensor = torch.tensor(centroids.values, dtype=torch.float32)
-        sim_matrix = F.cosine_similarity(centroids_tensor.unsqueeze(1), centroids_tensor.unsqueeze(0), dim=-1)
-        return pd.DataFrame(sim_matrix.numpy(), index=centroids.index, columns=centroids.index)
+    def evaluate_semantic_similarity(self, reference_sim_matrix: pd.DataFrame,
+                                     n_permutations: int = 100) -> pd.DataFrame:
+        """Spearman(centroid-cosine-sim, reference-sim) plus a label-shuffle null distribution.
 
-    def evaluate_semantic_similarity(self, reference_sim_matrix: pd.DataFrame) -> pd.DataFrame:
-        """
-        Correlates embedding-based similarity with a biological reference similarity.
-        This is the main metric for semantic alignment.
+        Returns one row per layer with: correlation, p_value (analytic),
+        null_mean, null_std, z_score (vs shuffle null), n_common_perturbations.
         """
         print("Evaluating semantic similarity...")
-        results = []
-        
-        # Align reference matrix to the perturbations found in the adata
-        common_perturbs = sorted(list(set(self.perturbations) & set(reference_sim_matrix.index)))
-        ref_sim_aligned = reference_sim_matrix.loc[common_perturbs, common_perturbs]
-        ref_values = ref_sim_aligned.values[np.triu_indices_from(ref_sim_aligned.values, k=1)]
+        common = sorted(set(self.perturbations) & set(reference_sim_matrix.index))
+        if len(common) < 3:
+            print(f"WARNING: only {len(common)} perturbations in common with reference; results unreliable.")
+        ref_aligned = reference_sim_matrix.loc[common, common]
+        ref_vec = _upper_triu(ref_aligned.values)
 
+        rng = np.random.default_rng(self.seed)
+        results = []
         for layer_key in tqdm(self.layer_keys, desc="Semantic Similarity"):
-            centroids = self._compute_centroids(layer_key)
-            centroids_aligned = centroids.loc[common_perturbs]
-            
-            emb_sim = self._compute_centroid_similarity(centroids_aligned)
-            emb_values = emb_sim.values[np.triu_indices_from(emb_sim.values, k=1)]
-            
-            corr, p_val = spearmanr(ref_values, emb_values)
-            results.append({'layer': int(layer_key.split('_')[-1]), 'correlation': corr, 'p_value': p_val})
-        
+            centroids = self._compute_centroids(layer_key).loc[common]
+            emb_sim = _cosine_sim_matrix(centroids.values)
+            emb_vec = _upper_triu(emb_sim)
+            corr, p_val = spearmanr(ref_vec, emb_vec)
+
+            null_corrs = np.empty(n_permutations)
+            n = len(common)
+            for i in range(n_permutations):
+                perm = rng.permutation(n)
+                shuffled = emb_sim[np.ix_(perm, perm)]
+                null_corrs[i], _ = spearmanr(ref_vec, _upper_triu(shuffled))
+            null_mean = float(np.mean(null_corrs))
+            null_std = float(np.std(null_corrs))
+            z = (corr - null_mean) / null_std if null_std > 0 else np.nan
+
+            results.append({
+                'layer': int(layer_key.split('_')[-1]),
+                'correlation': float(corr),
+                'p_value': float(p_val),
+                'null_mean': null_mean,
+                'null_std': null_std,
+                'z_score': float(z),
+                'n_common_perturbations': len(common),
+            })
         return pd.DataFrame(results).sort_values('layer').reset_index(drop=True)
 
     def evaluate_dose_response(self, dose_key: str) -> Optional[pd.DataFrame]:
-        """
-        Evaluates if embedding distance from control scales with perturbation dose.
-        """
+        """Cosine-distance from control centroid vs dose, Spearman per perturbation, mean per layer."""
         if dose_key not in self.adata.obs:
-            print(f"Warning: Dose key '{dose_key}' not found. Skipping dose evaluation.")
+            print(f"Warning: dose key '{dose_key}' not found. Skipping.")
             return None
-        
-        print("Evaluating dose response...")
-        results = []
-        control_mask = self.adata.obs[self.perturb_key] == self.control_label
+        print("Evaluating dose response (cosine distance)...")
+        control_mask = (self.adata.obs[self.perturb_key] == self.control_label).values
 
+        results = []
         for layer_key in tqdm(self.layer_keys, desc="Dose Response"):
-            layer_embeddings = self.adata.obsm[layer_key]
-            control_centroid = layer_embeddings[control_mask].mean(axis=0)
-            
-            layer_correlations = []
-            for perturb in self.perturbations:
-                perturb_mask = self.adata.obs[self.perturb_key] == perturb
-                if perturb_mask.sum() == 0: continue
-                
-                doses = self.adata.obs.loc[perturb_mask, dose_key]
-                # Skip if only one dose level or doses are not numeric
+            emb = self.adata.obsm[layer_key]
+            ctrl = emb[control_mask].mean(axis=0)
+            ctrl_t = torch.tensor(ctrl, dtype=torch.float32).unsqueeze(0)
+            layer_corrs = []
+            for p in self.perturbations:
+                mask = (self.adata.obs[self.perturb_key] == p).values
+                if mask.sum() == 0:
+                    continue
+                doses = self.adata.obs.loc[mask, dose_key]
                 if len(doses.unique()) < 2 or not pd.api.types.is_numeric_dtype(doses):
                     continue
-                    
-                perturb_embeddings = layer_embeddings[perturb_mask]
-                distances = np.linalg.norm(perturb_embeddings - control_centroid, axis=1)
-                
-                # Correlation between dose and distance from control
-                corr, _ = spearmanr(doses, distances)
+                pe = torch.tensor(emb[mask], dtype=torch.float32)
+                cos = F.cosine_similarity(pe, ctrl_t.expand_as(pe), dim=-1).cpu().numpy()
+                dist = 1.0 - cos
+                corr, _ = spearmanr(doses.values, dist)
                 if not np.isnan(corr):
-                    layer_correlations.append(corr)
-            
-            if layer_correlations:
+                    layer_corrs.append(corr)
+            if layer_corrs:
                 results.append({
                     'layer': int(layer_key.split('_')[-1]),
-                    'mean_dose_correlation': np.mean(layer_correlations),
-                    'std_dose_correlation': np.std(layer_correlations)
+                    'mean_dose_correlation': float(np.mean(layer_corrs)),
+                    'std_dose_correlation': float(np.std(layer_corrs)),
+                    'n_perturbations_with_dose': len(layer_corrs),
                 })
-        
         if not results:
-            print("Dose-response evaluation could not be completed (e.g., no numeric doses found).")
+            print("Dose-response: no usable perturbations.")
             return None
-            
         return pd.DataFrame(results).sort_values('layer').reset_index(drop=True)
 
     def evaluate_pathway_clustering(self, pathway_dict: Dict[str, List[str]]) -> Optional[pd.DataFrame]:
-        """
-        Evaluates if perturbations of the same pathway are more similar in embedding space.
-        Uses the "pathway gap" metric.
-        """
         if not pathway_dict:
-            print("Warning: No pathway dictionary provided. Skipping pathway evaluation.")
             return None
-            
         print("Evaluating pathway clustering...")
         results = []
-        
         for layer_key in tqdm(self.layer_keys, desc="Pathway Clustering"):
             centroids = self._compute_centroids(layer_key)
-            emb_sim = self._compute_centroid_similarity(centroids)
-            
-            within_pathway_sims = []
-            between_pathway_sims = []
-            
-            perturbs = list(emb_sim.index)
+            sim = pd.DataFrame(_cosine_sim_matrix(centroids.values),
+                               index=centroids.index, columns=centroids.index)
+            within, between = [], []
+            perturbs = list(sim.index)
             for i in range(len(perturbs)):
                 for j in range(i + 1, len(perturbs)):
                     p1, p2 = perturbs[i], perturbs[j]
-                    p1_pathways = set(pathway_dict.get(p1, []))
-                    p2_pathways = set(pathway_dict.get(p2, []))
-                    
-                    if not p1_pathways or not p2_pathways: continue
-                    
-                    similarity = emb_sim.loc[p1, p2]
-                    if p1_pathways & p2_pathways: # Shared pathway
-                        within_pathway_sims.append(similarity)
-                    else:
-                        between_pathway_sims.append(similarity)
-            
-            if within_pathway_sims and between_pathway_sims:
-                gap = np.mean(within_pathway_sims) - np.mean(between_pathway_sims)
-                results.append({'layer': int(layer_key.split('_')[-1]), 'pathway_gap': gap})
-
+                    a = set(pathway_dict.get(p1, []))
+                    b = set(pathway_dict.get(p2, []))
+                    if not a or not b:
+                        continue
+                    s = sim.loc[p1, p2]
+                    (within if a & b else between).append(s)
+            if within and between:
+                results.append({
+                    'layer': int(layer_key.split('_')[-1]),
+                    'pathway_gap': float(np.mean(within) - np.mean(between)),
+                    'n_within': len(within),
+                    'n_between': len(between),
+                })
         if not results:
-            print("Pathway evaluation could not be completed (e.g., no overlapping pathways found).")
             return None
-
         return pd.DataFrame(results).sort_values('layer').reset_index(drop=True)
 
-    def evaluate(self, reference_sim_matrix: pd.DataFrame, dose_key: Optional[str] = None, pathway_dict: Optional[Dict[str, List[str]]] = None) -> Dict[str, pd.DataFrame]:
-        """
-        Runs all evaluations and returns a dictionary of results.
-        """
-        all_results = {}
-        
-        # 1. Semantic Similarity (core metric)
-        all_results['semantic_similarity'] = self.evaluate_semantic_similarity(reference_sim_matrix)
-        
-        # 2. Dose Response (optional)
+    def evaluate(self, reference_sim_matrix: pd.DataFrame,
+                 dose_key: Optional[str] = None,
+                 pathway_dict: Optional[Dict[str, List[str]]] = None,
+                 n_permutations: int = 100) -> Dict[str, pd.DataFrame]:
+        out = {'semantic_similarity': self.evaluate_semantic_similarity(
+            reference_sim_matrix, n_permutations=n_permutations)}
         if dose_key:
-            dose_results = self.evaluate_dose_response(dose_key)
-            if dose_results is not None:
-                all_results['dose_response'] = dose_results
-
-        # 3. Pathway Clustering (optional)
+            dr = self.evaluate_dose_response(dose_key)
+            if dr is not None:
+                out['dose_response'] = dr
         if pathway_dict:
-            pathway_results = self.evaluate_pathway_clustering(pathway_dict)
-            if pathway_results is not None:
-                all_results['pathway_clustering'] = pathway_results
-                
-        return all_results
+            pc = self.evaluate_pathway_clustering(pathway_dict)
+            if pc is not None:
+                out['pathway_clustering'] = pc
+        return out

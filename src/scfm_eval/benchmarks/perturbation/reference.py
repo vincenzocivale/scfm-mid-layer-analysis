@@ -1,145 +1,93 @@
+"""Biological reference similarity matrix from per-perturbation DE profiles.
+
+Uses scanpy's Wilcoxon rank-sum (`sc.tl.rank_genes_groups`) for the per-perturbation
+DE call instead of a custom t-statistic. Profiles are vectors of log-fold-change
+over the *union* of all genes (no top-N truncation, so the similarity is computed
+on a complete profile rather than zero-filled holes).
 """
-Computes the biological reference similarity matrix based on differential expression.
-"""
+import warnings
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 import scanpy as sc
 import torch
 import torch.nn.functional as F
-from typing import Dict, Literal
-from pathlib import Path
-from tqdm import tqdm
-import warnings
+
 warnings.filterwarnings('ignore', category=UserWarning, module='scanpy')
 
 
 class ReferenceBuilder:
-    """
-    Builds a biological similarity reference between perturbations using
-    their differential expression (DE) profiles.
-    """
-    
-    def __init__(self, adata: sc.AnnData, perturb_key: str, control_label: str = 'control'):
-        """
-        Args:
-            adata: AnnData object with raw counts in .X or .raw.
-            perturb_key: Column in adata.obs with perturbation labels.
-            control_label: The label for control cells.
-        """
+    def __init__(self, adata: sc.AnnData, perturb_key: str, control_label: str = 'control',
+                 min_cells_per_perturb: int = 10):
         if perturb_key not in adata.obs.columns:
             raise ValueError(f"'{perturb_key}' not in adata.obs")
-
         self.adata = adata
         self.perturb_key = perturb_key
         self.control_label = control_label
+        self.min_cells_per_perturb = min_cells_per_perturb
         self.de_profiles = None
 
-        # Get perturbations with enough cells
-        perturb_counts = adata.obs[perturb_key].value_counts()
+        counts = adata.obs[perturb_key].value_counts()
         self.perturbations = sorted([
-            p for p in perturb_counts.index 
-            if pd.notna(p) and p != control_label and perturb_counts[p] >= 5
+            p for p in counts.index
+            if pd.notna(p) and p != control_label and counts[p] >= min_cells_per_perturb
         ])
+        if len(self.perturbations) < 2:
+            raise ValueError(f"Need ≥2 perturbations with ≥{min_cells_per_perturb} cells; got {len(self.perturbations)}")
 
-        # Cache control expression
-        control_mask = self.adata.obs[self.perturb_key] == self.control_label
-        if control_mask.sum() == 0:
-            raise ValueError(f"No control cells with label '{self.control_label}' found.")
-        
-        # Use .raw if available, otherwise .X
-        if self.adata.raw is not None:
-            print("Using .raw for DE calculation.")
-            self.rna_adata = self.adata.raw.to_adata()
-        else:
-            print("Using .X for DE calculation.")
-            self.rna_adata = self.adata
+        if (adata.obs[perturb_key] == control_label).sum() == 0:
+            raise ValueError(f"No control cells with label '{control_label}'")
 
-        self.control_expr = self.rna_adata[control_mask].X.toarray() if hasattr(self.rna_adata[control_mask].X, 'toarray') else self.rna_adata[control_mask].X
+        self.rna_adata = adata.raw.to_adata() if adata.raw is not None else adata.copy()
+        # Ensure log-normalised for Wilcoxon stability
+        if 'log1p' not in self.rna_adata.uns:
+            sc.pp.normalize_total(self.rna_adata, target_sum=1e4)
+            sc.pp.log1p(self.rna_adata)
+        self.rna_adata.obs[perturb_key] = adata.obs[perturb_key].values
 
+    def compute_de_profiles(self) -> pd.DataFrame:
+        """Run Wilcoxon per perturbation vs control. Returns (n_perturb x n_genes) LFC matrix."""
+        groups = self.perturbations
+        print(f"Running Wilcoxon DE for {len(groups)} perturbations vs control...")
+        sub_mask = self.rna_adata.obs[self.perturb_key].isin(groups + [self.control_label])
+        sub = self.rna_adata[sub_mask].copy()
+        sc.tl.rank_genes_groups(
+            sub,
+            groupby=self.perturb_key,
+            groups=groups,
+            reference=self.control_label,
+            method='wilcoxon',
+            use_raw=False,
+            n_genes=sub.n_vars,
+        )
+        names = sub.uns['rank_genes_groups']['names']
+        logfc = sub.uns['rank_genes_groups']['logfoldchanges']
 
-    def _compute_single_de_profile(self, perturb: str, n_top_genes: int = 500) -> pd.Series:
-        """Computes DE profile for a single perturbation vs control."""
-        perturb_mask = self.rna_adata.obs[self.perturb_key] == perturb
-        perturb_expr = self.rna_adata[perturb_mask].X
-        if hasattr(perturb_expr, 'toarray'):
-            perturb_expr = perturb_expr.toarray()
+        all_genes = sub.var_names.to_numpy()
+        profile_map = {}
+        for g in groups:
+            gene_arr = np.asarray(names[g])
+            lfc_arr = np.asarray(logfc[g], dtype=float)
+            s = pd.Series(lfc_arr, index=gene_arr)
+            profile_map[g] = s.reindex(all_genes).fillna(0.0).values
 
-        # Using torch for speed
-        control_tensor = torch.tensor(self.control_expr, dtype=torch.float32)
-        perturb_tensor = torch.tensor(perturb_expr, dtype=torch.float32)
-
-        control_mean = control_tensor.mean(dim=0)
-        perturb_mean = perturb_tensor.mean(dim=0)
-        
-        # Calculate log fold change and variance for ranking
-        log_fold_change = perturb_mean - control_mean
-        
-        # Simple t-statistic for ranking genes
-        control_var = control_tensor.var(dim=0)
-        perturb_var = perturb_tensor.var(dim=0)
-        n_control = control_tensor.shape[0]
-        n_perturb = perturb_tensor.shape[0]
-        
-        pooled_std = torch.sqrt(control_var / n_control + perturb_var / n_perturb)
-        t_stat = torch.abs(log_fold_change / (pooled_std + 1e-8))
-
-        # Select top genes based on t-statistic
-        top_indices = torch.topk(t_stat, min(n_top_genes, len(t_stat))).indices.numpy()
-        
-        # Get DE values (log fold change) for top genes
-        de_values = log_fold_change[top_indices].numpy()
-        gene_names = self.rna_adata.var_names[top_indices].to_list()
-        
-        return pd.Series(de_values, index=gene_names)
-
-    def compute_de_profiles(self, n_top_genes: int = 500) -> pd.DataFrame:
-        """
-        Computes DE profiles for all perturbations.
-        Each profile is a vector of log-fold-changes for the top DE genes.
-        """
-        print(f"Computing DE profiles for {len(self.perturbations)} perturbations...")
-        profiles = {}
-        for perturb in tqdm(self.perturbations, desc="Computing DE profiles"):
-            profiles[perturb] = self._compute_single_de_profile(perturb, n_top_genes)
-
-        # Combine profiles into a single DataFrame
-        all_genes = sorted(set.union(*[set(p.index) for p in profiles.values()]))
-        self.de_profiles = pd.DataFrame({
-            p: prof.reindex(all_genes, fill_value=0)
-            for p, prof in profiles.items()
-        }).T
-        
-        print("DE profiles computed.")
+        self.de_profiles = pd.DataFrame(profile_map, index=all_genes).T
         return self.de_profiles
 
     def compute_similarity_matrix(self, method: Literal['spearman', 'pearson'] = 'spearman') -> pd.DataFrame:
-        """
-        Computes the similarity matrix from DE profiles using correlation.
-        """
         if self.de_profiles is None:
-            raise ValueError("DE profiles not computed. Run compute_de_profiles() first.")
-
-        print(f"Computing {method} correlation matrix...")
+            raise ValueError("compute_de_profiles() first")
+        print(f"Computing {method} similarity between DE profiles...")
         if method == 'spearman':
-            # Rank data for Spearman correlation
-            ranked_de = self.de_profiles.rank(axis=1, method='average')
-            # Cosine similarity on ranked data is equivalent to Spearman
-            ranked_tensor = torch.tensor(ranked_de.values, dtype=torch.float32)
-            sim_matrix = F.cosine_similarity(ranked_tensor.unsqueeze(1), ranked_tensor.unsqueeze(0), dim=-1)
-            sim_matrix = sim_matrix.cpu().numpy()
-        else: # Pearson
-            de_tensor = torch.tensor(self.de_profiles.values, dtype=torch.float32)
-            # Center data for Pearson correlation
-            de_tensor_centered = de_tensor - de_tensor.mean(dim=1, keepdim=True)
-            sim_matrix = F.cosine_similarity(de_tensor_centered.unsqueeze(1), de_tensor_centered.unsqueeze(0), dim=-1)
-            sim_matrix = sim_matrix.cpu().numpy()
+            mat = self.de_profiles.rank(axis=1, method='average').values
+        else:
+            mat = self.de_profiles.values - self.de_profiles.values.mean(axis=1, keepdims=True)
+        t = torch.tensor(mat, dtype=torch.float32)
+        sim = F.cosine_similarity(t.unsqueeze(1), t.unsqueeze(0), dim=-1).cpu().numpy()
+        return pd.DataFrame(sim, index=self.de_profiles.index, columns=self.de_profiles.index)
 
-        return pd.DataFrame(sim_matrix, index=self.de_profiles.index, columns=self.de_profiles.index)
-
-    def build(self, de_top_n: int = 500, corr_method: Literal['spearman', 'pearson'] = 'spearman'):
-        """
-        Main method to build the reference similarity matrix.
-        """
-        self.compute_de_profiles(n_top_genes=de_top_n)
-        similarity_matrix = self.compute_similarity_matrix(method=corr_method)
-        return similarity_matrix
+    def build(self, corr_method: Literal['spearman', 'pearson'] = 'spearman', **_):
+        # **_ swallows legacy `de_top_n` kwarg from older callers.
+        self.compute_de_profiles()
+        return self.compute_similarity_matrix(method=corr_method)
