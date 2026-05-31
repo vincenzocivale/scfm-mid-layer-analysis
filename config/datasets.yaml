@@ -3,12 +3,13 @@
 # For each dataset: file path, source, supported downstream tasks, and the
 # task-specific `.obs` columns expected by the corresponding evaluator.
 #
+# Raw files are organized under data/raw/<task>/ to mirror their downstream use.
 # Keep this in sync with docs/datasets.md.
 
 datasets:
 
   brain:
-    path: data/raw/brain_dataset.h5ad
+    path: data/raw/classification/brain_dataset.h5ad
     source: https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e
     counts_state: log1p_normalized       # adata.X is normalized+log1p; raw counts in adata.raw
     tasks:
@@ -16,7 +17,7 @@ datasets:
         cell_type_column: cell_type
 
   spinal:
-    path: data/raw/spinal_dataset.h5ad
+    path: data/raw/classification/spinal_dataset.h5ad
     source: https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e
     counts_state: log1p_normalized
     tasks:
@@ -24,7 +25,7 @@ datasets:
         cell_type_column: cell_type
 
   liver:
-    path: data/raw/liver_dataset.h5ad
+    path: data/raw/classification/liver_dataset.h5ad
     source: https://cellxgene.cziscience.com/collections/be679cb1-35f0-46c9-9a2d-30691862a54a
     counts_state: log1p_normalized
     tasks:
@@ -32,23 +33,15 @@ datasets:
         cell_type_column: cell_type
 
   inner_ear:
-    path: data/raw/inner_ear_development.h5ad
+    path: data/raw/pseudotime/inner_ear_development.h5ad
     source: TBD                          # GEO accession to be filled in
     counts_state: TBD                    # verify
     tasks:
       pseudotime:
         time_column: week
 
-  GSE276896:
-    path: data/raw/GSE276896_adata_meta.h5ad
-    source: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE276896
-    counts_state: log1p_normalized
-    tasks:
-      pseudotime:
-        time_column: week
-
   D1_Rest:
-    path: data/raw/D1_Rest.assigned_guide_undersampled.h5ad
+    path: data/raw/perturbation/D1_Rest.assigned_guide_undersampled.h5ad
     source: Perturb-seq T-cell dataset (paper reference TBD)
     counts_state: raw_counts
     tasks:
@@ -57,7 +50,7 @@ datasets:
         control_label: non-targeting     # verify against actual values in adata.obs
 
   D1_Stim8hr:
-    path: data/raw/D1_Stim8hr.assigned_guide_undersampled.h5ad
+    path: data/raw/perturbation/D1_Stim8hr.assigned_guide_undersampled.h5ad
     source: Perturb-seq T-cell dataset (paper reference TBD)
     counts_state: raw_counts
     tasks:
@@ -66,10 +59,115 @@ datasets:
         control_label: non-targeting
 
   D1_Stim48hr:
-    path: data/raw/D1_Stim48hr.assigned_guide_undersampled.h5ad
+    path: data/raw/perturbation/D1_Stim48hr.assigned_guide_undersampled.h5ad
     source: Perturb-seq T-cell dataset (paper reference TBD)
     counts_state: raw_counts
     tasks:
       perturbation:
         perturb_key: gene_name
         control_label: non-targeting
+
+  # --- Added from scripts/dataset_downloads/manifest.yaml (GEO/HF) ---
+
+  liver_ma:
+    path: data/raw/classification/liver_ma.h5ad
+    source: GEO GSE151530
+    reference: |
+      Ma L., Hernandez M.O., Zhao Y., Mehta M., Tran B., Kelly M., Rae Z.,
+      Hernandez J.M., Davis J.L., Martin S.P., Kleiner D.E., Hewitt S.M.,
+      Ylaya K., Wood B.J., Greten T.F., Wang X.W.
+      "Tumor cell biodiversity drives microenvironmental reprogramming in
+      liver cancer."  Cancer Cell 36(4):418–430.e6 (2019).
+    doi: https://doi.org/10.1016/j.ccell.2019.08.007
+    counts_state: raw_counts
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  lung_kim:
+    path: data/raw/classification/lung_kim.h5ad
+    source: GEO GSE131907
+    reference: |
+      Kim N., Kim H.K., Lee K., Hong Y., Cho J.H., Choi J.W., Lee J.I.,
+      Suh Y.L., Ku B.M., Eum H.H., Choi S., Choi Y.L., Joung J.G., Park
+      W.Y., Jung H.A., Sun J.M., Lee S.H., Ahn J.S., Park K., Ahn M.J.,
+      Lee H.O.  "Single-cell RNA sequencing demonstrates the molecular and
+      cellular reprogramming of metastatic lung adenocarcinoma."
+      Nature Communications 11:2285 (2020).
+    doi: https://doi.org/10.1038/s41467-020-16164-1
+    counts_state: raw_counts
+    tasks:
+      classification:
+        cell_type_column: cell_type     # alias of Cell_type
+
+  emt_cook:
+    path: data/raw/pseudotime/emt_cook.h5ad
+    source: GEO GSE147405 (A549 TGFB1 TimeCourse)
+    reference: |
+      Cook D.P., Vanderhyden B.C.  "Context specificity of the EMT
+      transcriptional response."  Nature Communications 11:2142 (2020).
+    doi: https://doi.org/10.1038/s41467-020-16066-2
+    counts_state: raw_counts
+    tasks:
+      pseudotime:
+        time_column: Time
+
+  veres:
+    path: data/raw/pseudotime/veres.h5ad
+    source: GEO GSE114412 (Stage 5 aggregate)
+    reference: |
+      Veres A., Faust A.L., Bushnell H.L., Engquist E.N., Kenty J.H.,
+      Harb G., Poh Y.C., Sintov E., Gürtler M., Pagliuca F.W.,
+      Peterson Q.P., Melton D.A.  "Charting cellular identity during
+      human in vitro β-cell differentiation."  Nature 569:368–373 (2019).
+    doi: https://doi.org/10.1038/s41586-019-1168-5
+    counts_state: raw_counts
+    tasks:
+      pseudotime:
+        time_column: day        # alias of CellWeek; ~46% cells annotated, rest NaN
+
+  hspc_bouman:
+    path: data/raw/pseudotime/hspc_bouman.h5ad
+    source: GEO GSE226824
+    reference: |
+      Bouman B.J., Demerdash Y., Sood S., Grünschläger F., Pilz F.,
+      Itani A.R., Kuck A., Marot-Lassauzaie V., Haas S., Haghverdi L.
+      "Single-cell time series analysis reveals the dynamics of in vivo
+      hematopoietic stem cell aging."  Nature Communications 15:7079 (2024).
+    doi: https://doi.org/10.1038/s41467-024-51442-2
+    counts_state: unknown_check
+    tasks:
+      pseudotime:
+        time_column: time
+
+  norman_2019:
+    path: data/raw/perturbation/norman_2019.h5ad
+    source: GEO GSE133344
+    reference: |
+      Norman T.M., Horlbeck M.A., Replogle J.M., Ge A.Y., Xu A., Jost M.,
+      Gilbert L.A., Weissman J.S.  "Exploring genetic interaction manifolds
+      constructed from rich single-cell phenotypes."  Science
+      365(6455):786–793 (2019).
+    doi: https://doi.org/10.1126/science.aax4438
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: guide_identity
+        control_label: NegCtrl1_NegCtrl0__NegCtrl1_NegCtrl0
+
+  adamson_2016:
+    path: data/raw/perturbation/adamson_2016.h5ad
+    source: GEO GSE90546 (pilot 3 GSMs)
+    reference: |
+      Adamson B., Norman T.M., Jost M., Cho M.Y., Nuñez J.K., Chen Y.,
+      Villalta J.E., Gilbert L.A., Horlbeck M.A., Hein M.Y., Pak R.A.,
+      Gray A.N., Gross C.A., Dixit A., Parnas O., Regev A., Weissman J.S.
+      "A multiplexed single-cell CRISPR screening platform enables
+      systematic dissection of the unfolded protein response."
+      Cell 167(7):1867–1882.e21 (2016).
+    doi: https://doi.org/10.1016/j.cell.2016.11.048
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: perturbation        # alias of `guide identity`
+        control_label: 3x_neg_ctrl_pMJ144-1    # also: 3x_neg_ctrl_pMJ144-2

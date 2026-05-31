@@ -23,8 +23,8 @@ def main():
                         help="Directory with chunk_*.h5ad files (output of run_embedding_extraction.sh).")
     parser.add_argument('--output', type=Path, default=None,
                         help="Output h5ad path. Defaults to <input-dir>/<input-dir-name>.h5ad")
-    parser.add_argument('--pattern', type=str, default='chunk_*.h5ad',
-                        help="Glob pattern for chunk files (default: chunk_*.h5ad).")
+    parser.add_argument('--pattern', type=str, default='*_chunk_*.h5ad',
+                        help="Glob pattern for chunk files (default: *_chunk_*.h5ad).")
     parser.add_argument('--compression', type=str, default='gzip')
     args = parser.parse_args()
 

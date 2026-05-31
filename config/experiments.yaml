@@ -37,14 +37,78 @@ runs:
     model_size: 1b
     tasks: [classification]
 
+  - dataset: brain
+    model: scgpt
+    tasks: [classification]
+
+  - dataset: spinal
+    model: scgpt
+    tasks: [classification]
+
+  - dataset: liver
+    model: scgpt
+    tasks: [classification]
+
+  - dataset: brain
+    model: cellfm
+    tasks: [classification]
+
+  - dataset: spinal
+    model: cellfm
+    tasks: [classification]
+
+  - dataset: liver
+    model: cellfm
+    tasks: [classification]
+
+  - dataset: brain
+    model: uce
+    tasks: [classification]
+
+  - dataset: spinal
+    model: uce
+    tasks: [classification]
+
+  - dataset: liver
+    model: uce
+    tasks: [classification]
+
+  - dataset: brain
+    model: genecompass
+    tasks: [classification]
+
+  - dataset: spinal
+    model: genecompass
+    tasks: [classification]
+
+  - dataset: liver
+    model: genecompass
+    tasks: [classification]
+
   # ── Pseudotime ─────────────────────────────────────────────────────────────
-  - dataset: GSE276896
+  - dataset: inner_ear
     model: scfoundation
     tasks: [pseudotime]
 
-  - dataset: GSE276896
+  - dataset: inner_ear
     model: tahoe
     model_size: 1b
+    tasks: [pseudotime]
+
+  - dataset: inner_ear
+    model: scgpt
+    tasks: [pseudotime]
+
+  - dataset: inner_ear
+    model: cellfm
+    tasks: [pseudotime]
+
+  - dataset: inner_ear
+    model: uce
+    tasks: [pseudotime]
+
+  - dataset: inner_ear
+    model: genecompass
     tasks: [pseudotime]
 
   # ── Perturbation response ──────────────────────────────────────────────────
@@ -52,7 +116,26 @@ runs:
     model: scfoundation
     tasks: [perturbation]
 
-  # Add Tahoe / scgpt / geneformer runs as the models become available.
+  - dataset: D1_Stim8hr
+    model: tahoe
+    model_size: 1b
+    tasks: [perturbation]
+
+  - dataset: D1_Stim8hr
+    model: scgpt
+    tasks: [perturbation]
+
+  - dataset: D1_Stim8hr
+    model: cellfm
+    tasks: [perturbation]
+
+  - dataset: D1_Stim8hr
+    model: uce
+    tasks: [perturbation]
+
+  - dataset: D1_Stim8hr
+    model: genecompass
+    tasks: [perturbation]
 
 # Stage-1 defaults (overridable per-run if needed)
 extraction_defaults:
@@ -63,4 +146,20 @@ extraction_defaults:
   tahoe:
     chunk_size: 50000
     batch_size: 16
+    fp16: true
+  scgpt:
+    chunk_size: 50000
+    batch_size: 32
+    fp16: true
+  cellfm:
+    chunk_size: 20000
+    batch_size: 4
+    fp16: false   # MindSpore env; fp16 flag not used but kept for driver compatibility
+  uce:
+    chunk_size: 50000
+    batch_size: 16
+    fp16: true
+  genecompass:
+    chunk_size: 50000
+    batch_size: 32
     fp16: true

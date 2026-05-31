@@ -88,7 +88,7 @@ notebooks/
 
 ```bash
 # Stage 1
-MODELS=scfoundation ./run_embedding_extraction.sh data/raw/brain_dataset.h5ad
+MODELS=scfoundation ./run_embedding_extraction.sh data/raw/classification/brain_dataset.h5ad
 ./.venv/bin/python scripts/merge_chunks.py --input-dir data/embeddings/brain_dataset_scfoundation/
 
 # Stage 2 (any of)

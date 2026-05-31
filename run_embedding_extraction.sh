@@ -39,8 +39,16 @@ MODELS=(${MODELS:-scfoundation})
 
 # Default Python from the main venv; models with dedicated envs override below.
 PYTHON="${PYTHON:-./.venv/bin/python}"
+# Python for Tahoe (tahoe-x1 env; tahoe_x1 not in main .venv). Override via TAHOE_PYTHON env var.
+TAHOE_PYTHON="${TAHOE_PYTHON:-$(conda run -n tahoe-x1 which python 2>/dev/null || echo '')}"
 # Python for CellFM (MindSpore env). Override via CELLFM_PYTHON env var.
 CELLFM_PYTHON="${CELLFM_PYTHON:-$(conda run -n cellfm-env which python 2>/dev/null || echo '')}"
+# Python for scGPT (scgpt-env). Override via SCGPT_PYTHON env var.
+SCGPT_PYTHON="${SCGPT_PYTHON:-$(conda run -n scgpt-env which python 2>/dev/null || echo '')}"
+# Python for UCE (uce-env). Override via UCE_PYTHON env var.
+UCE_PYTHON="${UCE_PYTHON:-$(conda run -n uce-env which python 2>/dev/null || echo '')}"
+# Python for GeneCompass (genecompass-env). Override via GENECOMPASS_PYTHON env var.
+GENECOMPASS_PYTHON="${GENECOMPASS_PYTHON:-$(conda run -n genecompass-env which python 2>/dev/null || echo '')}"
 
 echo "Models:     ${MODELS[*]}"
 echo "Inputs:     ${#INPUT_FILES[@]}"
@@ -59,8 +67,14 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
         fi
         mkdir -p "$MODEL_OUT_DIR"
 
-        # Select Python interpreter: CellFM needs its MindSpore env.
-        if [ "$MODEL" == "cellfm" ]; then
+        # Select Python interpreter: several models need dedicated conda envs.
+        if [ "$MODEL" == "tahoe" ]; then
+            if [ -z "$TAHOE_PYTHON" ]; then
+                echo "ERROR: tahoe-x1 env not found. Create it first or set TAHOE_PYTHON."
+                exit 1
+            fi
+            RUN_PYTHON="$TAHOE_PYTHON"
+        elif [ "$MODEL" == "cellfm" ]; then
             if [ -z "$CELLFM_PYTHON" ]; then
                 echo "ERROR: cellfm-env not found. Create it first:"
                 echo "  conda env create -f envs/cellfm-env.yml && pip install -e ."
@@ -68,6 +82,34 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
                 exit 1
             fi
             RUN_PYTHON="$CELLFM_PYTHON"
+            # MindSpore 2.9 GPU plugin must find CUDA 11.x libs (installed via cudatoolkit=11.6
+            # in cellfm-env) before the C++ backend initialises device support.
+            CELLFM_LIB_DIR="$(dirname "$CELLFM_PYTHON")/../lib"
+            export LD_LIBRARY_PATH="$CELLFM_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        elif [ "$MODEL" == "scgpt" ]; then
+            if [ -z "$SCGPT_PYTHON" ]; then
+                echo "ERROR: scgpt-env not found. Create it first:"
+                echo "  conda env create -f envs/scgpt.yml && pip install -e ."
+                echo "Or set SCGPT_PYTHON=/path/to/scgpt-env/bin/python"
+                exit 1
+            fi
+            RUN_PYTHON="$SCGPT_PYTHON"
+        elif [ "$MODEL" == "uce" ]; then
+            if [ -z "$UCE_PYTHON" ]; then
+                echo "ERROR: uce-env not found. Create it first:"
+                echo "  conda env create -f envs/uce.yml && pip install -e ."
+                echo "Or set UCE_PYTHON=/path/to/uce-env/bin/python"
+                exit 1
+            fi
+            RUN_PYTHON="$UCE_PYTHON"
+        elif [ "$MODEL" == "genecompass" ]; then
+            if [ -z "$GENECOMPASS_PYTHON" ]; then
+                echo "ERROR: genecompass-env not found. Create it first:"
+                echo "  conda env create -f envs/genecompass.yml && pip install -e ."
+                echo "Or set GENECOMPASS_PYTHON=/path/to/genecompass-env/bin/python"
+                exit 1
+            fi
+            RUN_PYTHON="$GENECOMPASS_PYTHON"
         else
             RUN_PYTHON="$PYTHON"
         fi
@@ -75,7 +117,7 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
         echo ""
         echo "── $MODEL on $INPUT_NAME (python: $RUN_PYTHON) ──"
         PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" \
-        "$RUN_PYTHON" -m scfm_eval.extraction.chunked \
+        "$RUN_PYTHON" -u -m scfm_eval.extraction.chunked \
             --model "$MODEL" \
             "${SIZE_ARG[@]}" \
             --input "$INPUT_FILE" \

@@ -12,6 +12,8 @@ Download from: https://huggingface.co/ShangguanNingyuan/CellFM/tree/main
 """
 from __future__ import annotations
 
+import ctypes
+import glob
 import os
 import sys
 from pathlib import Path
@@ -20,6 +22,36 @@ from typing import Dict, List, Optional
 import numpy as np
 from scipy.sparse import issparse
 from tqdm import tqdm
+
+
+def _preload_mindspore_gpu_plugin() -> None:
+    """Pre-load libmindspore_gpu.so before MindSpore is imported.
+
+    MindSpore 2.9's GPU plugin requires being loaded via ctypes BEFORE the
+    _c_expression C extension initialises, otherwise the device-discovery
+    callback cannot register GPU as a supported backend.  We search for the
+    first loadable variant (11.6 preferred, then 11.1) in the package's
+    plugin dir.  Failures are silently ignored — MindSpore falls back to CPU.
+    """
+    try:
+        import importlib.util
+        ms_spec = importlib.util.find_spec("mindspore")
+        if ms_spec is None:
+            return
+        plugin_dir = Path(ms_spec.origin).parent / "lib" / "plugin"
+        for candidate in ["libmindspore_gpu.so.11.6", "libmindspore_gpu.so.11.1"]:
+            path = plugin_dir / candidate
+            if path.exists():
+                try:
+                    ctypes.CDLL(str(path))
+                    return
+                except OSError:
+                    continue
+    except Exception:
+        pass
+
+
+_preload_mindspore_gpu_plugin()
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _VENDOR_DIR = Path(__file__).resolve().parent / "vendor" / "cellfm"
@@ -125,10 +157,13 @@ class CellFMEmbedder:
         """Map dataset gene names to CellFM vocabulary indices."""
         import mindspore as ms
 
-        gene = np.array(
-            [self.geneset.get(g, 0) for g in adata.var_names],
-            dtype=np.int32,
-        )
+        # Try var_names first; fall back to feature_name column for Ensembl-ID datasets.
+        candidates = list(adata.var_names)
+        gene = np.array([self.geneset.get(g, 0) for g in candidates], dtype=np.int32)
+        if gene.sum() == 0 and "feature_name" in adata.var.columns:
+            candidates = list(adata.var["feature_name"])
+            gene = np.array([self.geneset.get(g, 0) for g in candidates], dtype=np.int32)
+
         matched = int((gene > 0).sum())
         self.genes_matched = matched
         print(f"CellFM: matched {matched}/{len(gene)} genes "

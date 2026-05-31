@@ -39,7 +39,7 @@ class scFoundationEmbedder(BaseEmbedder):
 
     @property
     def hidden_dim(self):
-        return self.config.get('encoder_embed_dim') or self.config.get('embed_dim')
+        return self.config.get('encoder', {}).get('hidden_dim')
 
     def _load_gene_list(self):
         df = pd.read_csv(self.gene_index_path, sep='\t')
@@ -61,7 +61,13 @@ class scFoundationEmbedder(BaseEmbedder):
         else:
             X = adata.X
 
-        gene_map = dict(zip(adata.var_names, adata.var['feature_name']))
+        if 'feature_name' in adata.var.columns:
+            gene_names = adata.var['feature_name'].tolist()
+        elif 'gene_symbol' in adata.var.columns:
+            gene_names = adata.var['gene_symbol'].tolist()
+        else:
+            gene_names = adata.var_names.tolist()
+        gene_map = dict(zip(adata.var_names, gene_names))
         data_dict = {}
         for i, ensembl_id in enumerate(adata.var_names):
             gene_symbol = gene_map.get(ensembl_id, ensembl_id)
@@ -107,7 +113,6 @@ class scFoundationEmbedder(BaseEmbedder):
         layer_outputs = {layer: [] for layer in layer_indices}
         n_obs = adata.n_obs
 
-        from torch.cuda.amp import autocast
         with torch.no_grad():
             first_batch = True
             for i in tqdm(range(0, n_obs, batch_size), desc=f"Extracting scFoundation layers with batch size {batch_size}"):
@@ -144,21 +149,11 @@ class scFoundationEmbedder(BaseEmbedder):
                     inf_xb = torch.isinf(x_batch).sum().item()
                     print(f"[INFO] x_batch first batch: NaN={nan_xb}, inf={inf_xb}")
 
-                if self.fp16 and self.device.type == "cuda":
-                    with autocast():
-                        x = self.model.token_emb(x_batch.unsqueeze(2).float(), output_weight=0)
-                        x += self.model.pos_emb(pos_ids_batch)
-
-                        for idx, mod in enumerate(self.model.encoder.transformer_encoder):
-                            x = mod(x, src_key_padding_mask=x_padding)
-                            if idx in layer_indices:
-                                cell_emb = x[:, -1, :].cpu()
-                                if first_batch:
-                                    nan_count = torch.isnan(cell_emb).sum().item()
-                                    if nan_count > 0:
-                                        raise ValueError(f"[ERROR] First batch of layer {idx} contains {nan_count} NaN in model output!")
-                                layer_outputs[idx].append(cell_emb)
-                else:
+                autocast_ctx = (
+                    torch.amp.autocast('cuda') if (self.fp16 and self.device.type == "cuda")
+                    else torch.amp.autocast('cuda', enabled=False)
+                )
+                with autocast_ctx:
                     x = self.model.token_emb(x_batch.unsqueeze(2).float(), output_weight=0)
                     x += self.model.pos_emb(pos_ids_batch)
 
