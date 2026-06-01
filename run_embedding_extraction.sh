@@ -116,7 +116,15 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
 
         echo ""
         echo "── $MODEL on $INPUT_NAME (python: $RUN_PYTHON) ──"
+        # CellFM needs the cellfm-env lib dir in LD_LIBRARY_PATH so the
+        # CUDA 11.6 runtime (libcudart.so.11.6.55) is visible to MindSpore.
+        EXTRA_LD=""
+        if [ "$MODEL" == "cellfm" ]; then
+            CELLFM_LIB="$(dirname "$CELLFM_PYTHON")/../lib"
+            EXTRA_LD="${CELLFM_LIB}:"
+        fi
         PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}" \
+        LD_LIBRARY_PATH="${EXTRA_LD}${LD_LIBRARY_PATH:-}" \
         "$RUN_PYTHON" -u -m scfm_eval.extraction.chunked \
             --model "$MODEL" \
             "${SIZE_ARG[@]}" \

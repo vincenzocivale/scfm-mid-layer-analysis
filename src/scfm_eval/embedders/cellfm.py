@@ -154,7 +154,11 @@ class CellFMEmbedder:
               f"layers={_N_LAYERS}, dim={_HIDDEN_DIM}, device={self._ms_device}")
 
     def prepare_data(self, adata):
-        """Map dataset gene names to CellFM vocabulary indices."""
+        """Map dataset gene names to CellFM vocabulary indices.
+
+        Returns a copy of adata subset to matched genes only, which reduces
+        the RetentionLayer sequence length and speeds up extraction significantly.
+        """
         import mindspore as ms
 
         # Try var_names first; fall back to feature_name column for Ensembl-ID datasets.
@@ -169,9 +173,15 @@ class CellFMEmbedder:
         print(f"CellFM: matched {matched}/{len(gene)} genes "
               f"({matched / max(len(gene), 1) * 100:.1f}%)")
 
-        # Update gene mapping tensor in-place — no weight reload needed in PYNATIVE.
-        self.encoder.used_gene = ms.Tensor(gene, ms.int32)
-        return adata
+        # Subset to matched genes to reduce RetentionLayer sequence length.
+        # Unmatched genes (ID=0) get the UNK embedding and add O(n²) overhead
+        # for no biological signal — filtering them out is correct and faster.
+        matched_mask = gene > 0
+        adata_f = adata[:, matched_mask].copy()
+        matched_gene = gene[matched_mask]
+
+        self.encoder.used_gene = ms.Tensor(matched_gene, ms.int32)
+        return adata_f
 
     def extract_embeddings_for_layers(
         self,
