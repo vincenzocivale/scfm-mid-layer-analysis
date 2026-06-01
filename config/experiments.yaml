@@ -85,6 +85,49 @@ runs:
     model: genecompass
     tasks: [classification]
 
+  # ── Tabula Sapiens: cell-type classification ───────────────────────────────
+  - dataset: tabula-blood
+    model: scfoundation
+    tasks: [classification]
+
+  - dataset: tabula-blood
+    model: tahoe
+    model_size: 1b
+    tasks: [classification]
+
+  - dataset: tabula-blood
+    model: scgpt
+    tasks: [classification]
+
+  - dataset: tabula-blood
+    model: uce
+    tasks: [classification]
+
+  - dataset: tabula-blood
+    model: genecompass
+    tasks: [classification]
+
+  - dataset: tabula-immune
+    model: scfoundation
+    tasks: [classification]
+
+  - dataset: tabula-immune
+    model: tahoe
+    model_size: 1b
+    tasks: [classification]
+
+  - dataset: tabula-immune
+    model: scgpt
+    tasks: [classification]
+
+  - dataset: tabula-immune
+    model: uce
+    tasks: [classification]
+
+  - dataset: tabula-immune
+    model: genecompass
+    tasks: [classification]
+
   # ── Pseudotime ─────────────────────────────────────────────────────────────
   - dataset: inner_ear
     model: scfoundation

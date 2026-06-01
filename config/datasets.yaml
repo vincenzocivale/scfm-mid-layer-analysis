@@ -171,3 +171,19 @@ datasets:
       perturbation:
         perturb_key: perturbation        # alias of `guide identity`
         control_label: 3x_neg_ctrl_pMJ144-1    # also: 3x_neg_ctrl_pMJ144-2
+
+  tabula-blood:
+    path: data/raw/classification/tabula/tabula-blood.h5ad
+    source: Tabula Sapiens (CZ CELLxGENE)
+    counts_state: log1p_normalized
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  tabula-immune:
+    path: data/raw/classification/tabula/tabula-immune.h5ad
+    source: Tabula Sapiens (CZ CELLxGENE)
+    counts_state: log1p_normalized
+    tasks:
+      classification:
+        cell_type_column: cell_type

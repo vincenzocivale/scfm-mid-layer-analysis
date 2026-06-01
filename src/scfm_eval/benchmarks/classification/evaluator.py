@@ -1,3 +1,5 @@
+import gc
+
 import numpy as np
 import scanpy as sc
 from scipy.sparse import issparse
@@ -43,35 +45,55 @@ class ClassificationEvaluator:
         scoring = ['accuracy', 'f1_macro', 'precision_macro', 'recall_macro']
         scores = cross_validate(clf, X, y, cv=cv, scoring=scoring, n_jobs=1)
         return {
-            'Accuracy': float(np.mean(scores['test_accuracy'])),
-            'F1_macro': float(np.mean(scores['test_f1_macro'])),
-            'Precision_macro': float(np.mean(scores['test_precision_macro'])),
-            'Recall_macro': float(np.mean(scores['test_recall_macro'])),
+            'Accuracy':           float(np.mean(scores['test_accuracy'])),
+            'Accuracy_std':       float(np.std(scores['test_accuracy'])),
+            'F1_macro':           float(np.mean(scores['test_f1_macro'])),
+            'F1_macro_std':       float(np.std(scores['test_f1_macro'])),
+            'Precision_macro':    float(np.mean(scores['test_precision_macro'])),
+            'Precision_macro_std': float(np.std(scores['test_precision_macro'])),
+            'Recall_macro':       float(np.mean(scores['test_recall_macro'])),
+            'Recall_macro_std':   float(np.std(scores['test_recall_macro'])),
         }
 
     def _metric_knn(self, X, y):
         clf = make_pipeline(
             StandardScaler(with_mean=True),
-            KNeighborsClassifier(n_neighbors=self.k_neighbors, n_jobs=-1),
+            KNeighborsClassifier(n_neighbors=self.k_neighbors, n_jobs=16),
         )
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
         scores = cross_validate(clf, X, y, cv=cv, scoring=['accuracy', 'f1_macro'], n_jobs=1)
         return {
-            'kNN_Accuracy': float(np.mean(scores['test_accuracy'])),
-            'kNN_F1_macro': float(np.mean(scores['test_f1_macro'])),
+            'kNN_Accuracy':     float(np.mean(scores['test_accuracy'])),
+            'kNN_Accuracy_std': float(np.std(scores['test_accuracy'])),
+            'kNN_F1_macro':     float(np.mean(scores['test_f1_macro'])),
+            'kNN_F1_macro_std': float(np.std(scores['test_f1_macro'])),
         }
 
-    def _metric_silhouette(self, X, y):
+    def _metric_silhouette(self, X, y, n_bootstrap=10, sample_size=20000):
+        # Bootstrap over subsamples (same idx for X and y) to get mean ± std.
         rng = np.random.default_rng(self.seed)
-        if X.shape[0] > 20000:
-            idx = rng.choice(X.shape[0], 20000, replace=False)
-            X, y = X[idx], y[idx]
-        return float(silhouette_score(X, y, metric='euclidean'))
+        n = min(sample_size, X.shape[0])
+        scores = []
+        for _ in range(n_bootstrap):
+            idx = rng.choice(X.shape[0], n, replace=True)
+            scores.append(float(silhouette_score(X[idx], y[idx], metric='euclidean')))
+        return {
+            'Silhouette_Score':     float(np.mean(scores)),
+            'Silhouette_Score_std': float(np.std(scores)),
+        }
 
     def _metric_clustering(self, X, y):
         """Leiden resolution sweep; return best ARI/NMI and the resolution that achieved it."""
         temp = sc.AnnData(X)
-        sc.pp.neighbors(temp, n_neighbors=self.k_neighbors, use_rep='X')
+        # Reduce to 50 PCs before kNN to avoid OOM: PyNNDescent tree memory scales
+        # as O(n * n_trees * leaf_size * dim), exploding for dim > 50.
+        n_comps = min(50, X.shape[1] - 1)
+        if X.shape[1] > 50:
+            sc.pp.pca(temp, n_comps=n_comps, random_state=self.seed, svd_solver='arpack')
+            use_rep = 'X_pca'
+        else:
+            use_rep = 'X'
+        sc.pp.neighbors(temp, n_neighbors=self.k_neighbors, use_rep=use_rep)
         best = {'ARI': -np.inf, 'NMI': -np.inf, 'leiden_resolution': None, 'n_clusters': None}
         for res in _LEIDEN_RESOLUTIONS:
             sc.tl.leiden(temp, resolution=res, random_state=self.seed, key_added=f'leiden_{res}')
@@ -85,6 +107,22 @@ class ClassificationEvaluator:
                     'leiden_resolution': float(res),
                     'n_clusters': int(len(np.unique(clusters))),
                 }
+
+        # Multi-seed Leiden at best resolution to estimate stochastic variance.
+        best_res = best['leiden_resolution']
+        ari_runs, nmi_runs = [], []
+        for run_i in range(5):
+            key = f'leiden_rep_{run_i}'
+            sc.tl.leiden(temp, resolution=best_res,
+                         random_state=run_i * 7 + 13, key_added=key)
+            clusters = temp.obs[key].values
+            ari_runs.append(adjusted_rand_score(y, clusters))
+            nmi_runs.append(normalized_mutual_info_score(y, clusters))
+        best['ARI_std'] = float(np.std(ari_runs))
+        best['NMI_std'] = float(np.std(nmi_runs))
+
+        del temp
+        gc.collect()
         return best
 
     def evaluate_layer(self, layer_key):
@@ -97,6 +135,6 @@ class ClassificationEvaluator:
         result = {'Layer': layer_key}
         result.update(self._metric_logreg(X, y))
         result.update(self._metric_knn(X, y))
-        result['Silhouette_Score'] = self._metric_silhouette(X, y)
+        result.update(self._metric_silhouette(X, y))
         result.update(self._metric_clustering(X, y))
         return result
