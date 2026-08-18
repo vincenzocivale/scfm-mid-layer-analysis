@@ -1,0 +1,54 @@
+# Declarative study definition.
+#
+# This file describes WHAT should be compared. Runtime chunk sizes and batch
+# sizes are execution settings and should not alter result identity.
+
+study:
+  name: mid-layer-representation-study
+  objective: >
+    Measure whether intermediate single-cell foundation-model representations
+    outperform the final representation across biological downstream contexts.
+
+datasets:
+  brain:
+    path: data/raw/brain_dataset.h5ad
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  spinal:
+    path: data/raw/spinal_dataset.h5ad
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  liver:
+    path: data/raw/liver_dataset.h5ad
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+models:
+  - name: scfoundation
+  - name: tahoe
+    size: 1b
+
+artifacts:
+  embeddings_root: artifacts/embeddings
+  results_root: artifacts/results
+  summary_root: artifacts/summary
+
+evaluation:
+  classification:
+    folds: 5
+    seed: 42
+
+execution:
+  scfoundation:
+    chunk_size: 20000
+    batch_size: 1
+    fp16: true
+  tahoe:
+    chunk_size: 50000
+    batch_size: 16
+    fp16: true

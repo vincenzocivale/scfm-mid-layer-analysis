@@ -71,7 +71,7 @@ In `config/datasets.yaml`, per ogni dataset compatibile, aggiungi `<task>` alla 
 
 ```yaml
 brain:
-  path: data/raw/brain_dataset.h5ad
+  path: data/raw/classification/brain_dataset.h5ad
   tasks:
     classification:
       cell_type_column: cell_type

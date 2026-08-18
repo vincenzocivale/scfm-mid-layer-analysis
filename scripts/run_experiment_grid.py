@@ -27,7 +27,9 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -64,12 +66,16 @@ def load_yaml(path: Path) -> dict:
 
 
 def embeddings_dir_for(dataset_path: Path, model: str, model_size: Optional[str]) -> Path:
-    suffix = f"_{model}" if model_size in (None, '', 'default') else f"_{model}_{model_size}"
-    return REPO_ROOT / 'data' / 'embeddings' / f"{dataset_path.stem}{suffix}"
+    """Returns the chunk directory: data/embeddings/<dataset>/chunks/<model[_size]>/"""
+    model_suffix = model if model_size in (None, '', 'default') else f"{model}_{model_size}"
+    return REPO_ROOT / 'data' / 'embeddings' / dataset_path.stem / 'chunks' / model_suffix
 
 
 def merged_h5ad_for(embeddings_dir: Path) -> Path:
-    return embeddings_dir / f"{embeddings_dir.name}.h5ad"
+    """Returns the merged h5ad: data/embeddings/<dataset>/<dataset>_<model[_size]>.h5ad"""
+    dataset_stem = embeddings_dir.parent.parent.name  # .../embeddings/<dataset>/chunks/<model>
+    model_suffix = embeddings_dir.name
+    return embeddings_dir.parent.parent / f"{dataset_stem}_{model_suffix}.h5ad"
 
 
 def task_output_path(task: str, merged_h5ad: Path) -> Path:
@@ -99,18 +105,38 @@ def matches_filter(run: dict, task: str, filters: Dict[str, str]) -> bool:
     return True
 
 
-def run_subprocess(cmd: List[str], log_prefix: str) -> tuple:
+def run_subprocess(cmd: List[str], log_prefix: str, extra_env: Optional[Dict[str, str]] = None) -> tuple:
     """Run cmd in a fresh subprocess. Returns (returncode, elapsed_seconds, error_msg)."""
     print(f"\n[{log_prefix}] $ {' '.join(str(c) for c in cmd)}")
     t0 = time.time()
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
     try:
-        proc = subprocess.run(cmd, cwd=str(REPO_ROOT))
+        proc = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env)
         elapsed = time.time() - t0
         if proc.returncode != 0:
             return proc.returncode, elapsed, f"exit code {proc.returncode}"
         return 0, elapsed, ''
     except Exception as e:
         return -1, time.time() - t0, repr(e)
+
+
+def _stage2_env(jobs: int) -> Dict[str, str]:
+    """Per-subprocess env additions for stage-2 when running multiple cells
+    concurrently. Caps BLAS thread pools to cpu_count // jobs so `--jobs N`
+    doesn't oversubscribe the machine; vars the user already set are left
+    untouched. No-op (empty dict) for jobs <= 1, i.e. the default driver
+    env/behavior is unchanged.
+    """
+    if jobs <= 1:
+        return {}
+    n = max(1, (os.cpu_count() or 1) // jobs)
+    return {
+        var: str(n) for var in
+        ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'NUMEXPR_NUM_THREADS')
+        if var not in os.environ
+    }
 
 
 def append_manifest(manifest_path: Path, row: dict) -> None:
@@ -163,7 +189,7 @@ def ensure_extraction(dataset_path: Path, model: str, model_size: Optional[str],
 
     # Stage 1.5: merge chunks into a single h5ad if not already there
     if not merged.exists():
-        chunks = sorted(out_dir.glob('chunk_*.h5ad'))
+        chunks = sorted(out_dir.glob('*_chunk_*.h5ad'))
         if not chunks:
             raise RuntimeError(f"no chunks produced in {out_dir}")
         merge_cmd = [PY, str(REPO_ROOT / 'scripts' / 'merge_chunks.py'),
@@ -209,6 +235,10 @@ def main():
                         help="Re-run every cell, even if its output CSV is already present.")
     parser.add_argument('--dry-run', action='store_true', help="Print the plan; do not execute.")
     parser.add_argument('--manifest', type=Path, default=REPO_ROOT / 'data' / 'run_manifest.csv')
+    parser.add_argument('--jobs', type=int, default=1,
+                        help="Number of stage-2 (CPU-bound) evaluations to run concurrently. "
+                             "Default 1 = sequential, identical to the original driver. "
+                             "Stage-1 (GPU) extraction always runs sequentially first.")
     args = parser.parse_args()
 
     runs_cfg = load_yaml(args.config)
@@ -250,45 +280,71 @@ def main():
         return
 
     resume = not args.no_resume
+
+    # Phase 1: stage-1 extraction, sequential (GPU-bound, clean isolation
+    # between models). This is the exact per-cell loop body the original
+    # driver used, just run to completion before any stage-2 starts.
+    extraction_results: List[dict] = []
     for cell in plan:
-        ds_key = cell['dataset']
-        model = cell['model']
-        size = cell['model_size']
-        task = cell['task']
+        ds_key, model, size, task = cell['dataset'], cell['model'], cell['model_size'], cell['task']
         run_id = f"{ds_key}/{model}{('-'+size) if size else ''}/{task}"
         started = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
-
         try:
             merged_h5ad = ensure_extraction(
                 cell['dataset_path'], model, size, extraction_defaults,
                 resume=resume, dry=False,
             )
+            extraction_results.append({'cell': cell, 'run_id': run_id, 'started': started,
+                                        'merged_h5ad': merged_h5ad, 'error': None})
+        except Exception as e:
+            extraction_results.append({'cell': cell, 'run_id': run_id, 'started': started,
+                                        'merged_h5ad': None, 'error': repr(e)})
 
+    # Phase 2: stage-2 evaluation. Each cell's evaluation is independent and
+    # CPU-bound, so up to --jobs run concurrently (default 1 = sequential,
+    # identical to the original driver). extra_env caps BLAS threads per
+    # subprocess to avoid oversubscribing the machine when --jobs > 1.
+    extra_env = _stage2_env(args.jobs)
+    manifest_lock = threading.Lock()
+
+    def _run_stage2(item: dict) -> None:
+        cell, run_id, started = item['cell'], item['run_id'], item['started']
+        ds_key, model, size, task = cell['dataset'], cell['model'], cell['model_size'], cell['task']
+
+        if item['error'] is not None:
+            rc, elapsed, err, status = -1, 0.0, item['error'], 'fail'
+        else:
+            merged_h5ad = item['merged_h5ad']
             out = task_output_path(task, merged_h5ad)
             if resume and out.exists():
                 print(f"\n[skip] {run_id} — output already exists: {out.relative_to(REPO_ROOT)}")
-                append_manifest(args.manifest, {
-                    'run_id': run_id, 'dataset': ds_key, 'model': model,
-                    'model_size': size or '', 'task': task,
-                    'status': 'skipped', 'started_at': started, 'finished_at': started,
-                    'elapsed_s': 0, 'error': '',
-                })
-                continue
-
-            cmd = build_task_cmd(task, merged_h5ad, cell['task_cfg'])
-            rc, elapsed, err = run_subprocess(cmd, log_prefix=run_id)
-            status = 'ok' if rc == 0 else 'fail'
-
-        except Exception as e:
-            rc, elapsed, err, status = -1, 0.0, repr(e), 'fail'
+                finished = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
+                with manifest_lock:
+                    append_manifest(args.manifest, {
+                        'run_id': run_id, 'dataset': ds_key, 'model': model,
+                        'model_size': size or '', 'task': task,
+                        'status': 'skipped', 'started_at': started, 'finished_at': finished,
+                        'elapsed_s': 0, 'error': '',
+                    })
+                return
+            try:
+                cmd = build_task_cmd(task, merged_h5ad, cell['task_cfg'])
+                rc, elapsed, err = run_subprocess(cmd, log_prefix=run_id, extra_env=extra_env)
+                status = 'ok' if rc == 0 else 'fail'
+            except Exception as e:
+                rc, elapsed, err, status = -1, 0.0, repr(e), 'fail'
 
         finished = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
-        append_manifest(args.manifest, {
-            'run_id': run_id, 'dataset': ds_key, 'model': model,
-            'model_size': size or '', 'task': task,
-            'status': status, 'started_at': started, 'finished_at': finished,
-            'elapsed_s': round(elapsed, 1), 'error': err,
-        })
+        with manifest_lock:
+            append_manifest(args.manifest, {
+                'run_id': run_id, 'dataset': ds_key, 'model': model,
+                'model_size': size or '', 'task': task,
+                'status': status, 'started_at': started, 'finished_at': finished,
+                'elapsed_s': round(elapsed, 1), 'error': err,
+            })
+
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        list(pool.map(_run_stage2, extraction_results))
 
     print("\nGrid complete. Manifest:", args.manifest.relative_to(REPO_ROOT))
 

@@ -37,8 +37,6 @@ models:
     env_vars:
       SCGPT_MODEL_DIR: data/checkpoints/scgpt/whole_human
 
-  # ─── Below: planned, not yet implemented. See docs/adding_a_model.md. ───
-
   cellfm:
     class: scfm_eval.embedders.cellfm.CellFMEmbedder
     sizes: [default]
@@ -54,7 +52,11 @@ models:
 
   uce:
     class: scfm_eval.embedders.uce.UCEEmbedder
-    sizes: [4layer, 33layer]
+    # "default" = all existing runs in this repo (model_size left unset in
+    # experiments.yaml -> output files have no size suffix, i.e. "..._uce.csv").
+    # It maps to the 4-layer checkpoint below. "4layer"/"33layer" are kept as
+    # explicit aliases for future runs that pass --model_size.
+    sizes: [default, 4layer, 33layer]
     expected_input: raw_counts        # adata.X must be raw (un-normalised) counts
     gene_vocab: uce_protein_emb       # ESM2 protein embeddings per gene symbol
     pooling: cls_token                # cell embedding = transformer_layer_i_output[0, :, :] (CLS, seq-first)

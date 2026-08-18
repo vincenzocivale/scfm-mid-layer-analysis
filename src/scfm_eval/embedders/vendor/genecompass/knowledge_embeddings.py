@@ -214,7 +214,7 @@ class KnowledgeBertEmbeddings(nn.Module):
             peca_grn_embeds = self.peca_grn_embeddings(peca_grn_inputs)
             inputs_embeds = torch.cat((inputs_embeds,emb_warmup_alpha * peca_grn_embeds), dim=2)
         
-        inputs_embeds = self.concat_embeddings(inputs_embeds)
+        inputs_embeds = self.concat_embeddings(inputs_embeds.to(next(self.concat_embeddings.parameters()).dtype))
         
         # embedding
         token_type_embeddings = self.token_type_embeddings(token_type_ids)

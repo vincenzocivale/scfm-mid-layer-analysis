@@ -3,6 +3,9 @@
 *.ckpt
 *.tsv
 data/
+src/scfm_eval.egg-info/
+.claude
+
 
 # Logs and figures
 *.log

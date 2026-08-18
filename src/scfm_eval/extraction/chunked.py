@@ -82,8 +82,27 @@ def main():
             adata_chunk.var['feature_name'] = adata_chunk.var['gene_name']
 
         # --------------------------------------------------
+        # Restore raw counts for models that require them
+        # --------------------------------------------------
+        # Some datasets store log1p-normalized counts in X and keep raw
+        # counts in adata.raw. Models with expected_input='raw_counts'
+        # must receive integer/un-normalised expression.
+        if getattr(embedder, 'expected_input', None) == 'raw_counts' and adata_chunk.raw is not None:
+            common = adata_chunk.var_names.intersection(adata_chunk.raw.var_names)
+            if len(common) == adata_chunk.n_vars:
+                adata_chunk.X = adata_chunk.raw[:, adata_chunk.var_names].X
+                print(f"[chunked] Restored raw counts from adata.raw "
+                      f"({adata_chunk.n_vars} genes, model expects raw_counts)")
+            else:
+                missing = adata_chunk.n_vars - len(common)
+                print(f"[chunked] WARNING: {missing}/{adata_chunk.n_vars} vars absent from "
+                      f"adata.raw — cannot restore raw counts, proceeding with current X.")
+
+        # --------------------------------------------------
         # Prepare data
         # --------------------------------------------------
+        # Save original obs before prepare_data replaces/filters it.
+        original_obs = adata_chunk.obs.copy()
         adata_prepared = embedder.prepare_data(adata_chunk)
         del adata_chunk
         gc.collect()
@@ -102,6 +121,13 @@ def main():
             obs=adata_prepared.obs,
             var=adata_prepared.var,
         )
+        # Propagate original obs columns (cell_type, batch, …) that prepare_data dropped.
+        # Use positional values — prepare_data may reset obs_names (e.g. scFoundation
+        # creates a new AnnData with integer indices) but never changes cell count/order.
+        cols_to_add = [c for c in original_obs.columns if c not in adata_out.obs.columns]
+        for col in cols_to_add:
+            adata_out.obs[col] = original_obs[col].values
+        del original_obs
         meta = build_layer_metadata(
             embedder, layers_extracted=args.layers, fp16=fp16,
             chunk_index=chunk_idx, cell_range=[start, end],

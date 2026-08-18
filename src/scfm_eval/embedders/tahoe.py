@@ -45,13 +45,51 @@ class TahoeEmbedder(BaseEmbedder):
     def prepare_data(self, adata):
         """Filter genes to only those in vocabulary"""
         adata = adata.copy()
-        adata.var["id_in_vocab"] = [self.vocab[g] if g in self.vocab else -1 for g in adata.var_names]
+        var_names = adata.var_names.tolist()
 
-        num_matched = (adata.var["id_in_vocab"] >= 0).sum()
-        self.genes_matched = int(num_matched)
-        print(f"Matched {num_matched}/{len(adata.var_names)} genes in Tahoe vocabulary")
+        # Tahoe vocab uses Ensembl IDs. Try matching strategies in priority order:
+        #  1. var_names that look like Ensembl IDs (ENSG / ENSMUSG)
+        #  2. feature_name / gene_symbol column (gene symbols — fallback for older datasets)
+        def _match(candidates):
+            ids = [self.vocab[g] if g in self.vocab else -1 for g in candidates]
+            return ids, sum(1 for x in ids if x >= 0)
 
-        return adata[:, adata.var["id_in_vocab"] >= 0]
+        if any(str(g).startswith(("ENSG", "ENSMUSG")) for g in var_names[:20]):
+            token_ids, n_matched = _match(var_names)
+        elif 'feature_name' in adata.var.columns:
+            token_ids, n_matched = _match(adata.var['feature_name'].tolist())
+        elif 'gene_symbol' in adata.var.columns:
+            token_ids, n_matched = _match(adata.var['gene_symbol'].tolist())
+        else:
+            token_ids, n_matched = _match(var_names)
+
+        adata.var["id_in_vocab"] = token_ids
+        self.genes_matched = n_matched
+        print(f"Matched {n_matched}/{len(var_names)} genes in Tahoe vocabulary")
+
+        if n_matched == 0:
+            raise ValueError(
+                "No genes matched Tahoe vocabulary. Dataset var_names or feature_name "
+                "must be Ensembl IDs (ENSG…). Current format: "
+                f"{var_names[:3]}"
+            )
+
+        adata_f = adata[:, adata.var["id_in_vocab"] >= 0].copy()
+
+        # Drop cells with zero matched-gene expression so the loader never
+        # receives a 0-d tensor from len(example["genes"]).
+        import numpy as np
+        from scipy.sparse import issparse
+        X = adata_f.X.toarray() if issparse(adata_f.X) else np.array(adata_f.X)
+        nonzero_cells = np.any(X > 0, axis=1)
+        if not np.all(nonzero_cells):
+            n_dropped = int((~nonzero_cells).sum())
+            warnings.warn(
+                f"TahoeEmbedder: dropping {n_dropped} cells with no expression in "
+                "matched genes."
+            )
+            adata_f = adata_f[nonzero_cells].copy()
+        return adata_f
     
     def extract_embeddings_for_layers(self, adata, layer_indices: list, batch_size: int = 4) -> dict:
         """Extract embeddings from multiple transformer layers in a single forward pass."""

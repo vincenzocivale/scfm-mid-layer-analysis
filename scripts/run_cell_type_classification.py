@@ -3,8 +3,15 @@ Script di lancio per la pipeline di analisi di classificazione dei tipi di cellu
 Permette di specificare input, colonna dei tipi di cellule, prefisso embedding e output.
 Salva i risultati in una cartella di output specificata.
 """
-import argparse
+# Cap BLAS/OpenMP threads before any library import to prevent segfaults on
+# machines where OpenBLAS is compiled with NUM_THREADS < available CPU count.
 import os
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '16')
+os.environ.setdefault('OMP_NUM_THREADS', '16')
+os.environ.setdefault('MKL_NUM_THREADS', '16')
+os.environ.setdefault('NUMEXPR_NUM_THREADS', '16')
+
+import argparse
 import sys
 from pathlib import Path
 

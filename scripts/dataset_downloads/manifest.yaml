@@ -1,0 +1,417 @@
+# Dataset download manifest.
+#
+# Source policy on this server: GEO + HuggingFace only.
+# Figshare (HTTP 202 WAF challenge), 10x Genomics CDN (403 Cloudflare),
+# Broad SCP (auth), pertpy/scvi-tools loaders (figshare-backed) are NOT
+# usable directly — they're listed under `unavailable:` for traceability.
+#
+# Schema per entry:
+#   task: classification | pseudotime | perturbation
+#   method: geo | huggingface
+#   source: accession (GEO) or repo_id (HF)
+#   files: list of supplementary file names to fetch (GEO only)
+#   target: final h5ad path under data/raw/<task>/
+#   obs_required: columns evaluator needs in adata.obs
+#   obs_control_label: (perturbation only) value in `obs_required[0]`
+#   counts_state: raw_counts | log1p_normalized | unknown_check
+#   reference:    full citation (authors, title, venue, year)
+#   doi:          DOI URL of the primary publication
+#   data_url:     human-readable landing page for the primary distribution
+#   notes:        assembly / post-processing notes
+
+datasets:
+
+  # ============================================================
+  # CLASSIFICATION
+  # ============================================================
+
+  liver_ma:
+    task: classification
+    method: geo
+    source: GSE151530
+    files:
+      - GSE151530_matrix.mtx.gz
+      - GSE151530_barcodes.tsv.gz
+      - GSE151530_genes.tsv.gz
+      - GSE151530_Info.txt.gz
+    target: data/raw/classification/liver_ma.h5ad
+    obs_required: [cell_type]
+    counts_state: raw_counts
+    reference: |
+      Ma L., Hernandez M.O., Zhao Y., Mehta M., Tran B., Kelly M., Rae Z.,
+      Hernandez J.M., Davis J.L., Martin S.P., Kleiner D.E., Hewitt S.M.,
+      Ylaya K., Wood B.J., Greten T.F., Wang X.W.  "Tumor cell biodiversity
+      drives microenvironmental reprogramming in liver cancer."
+      Cancer Cell, 36(4):418–430.e6 (2019).
+    doi: https://doi.org/10.1016/j.ccell.2019.08.007
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE151530
+    notes: |
+      Standard 10x triplet (mtx + barcodes + genes) plus a TSV metadata file
+      (Info.txt.gz) with cell-type labels.  Cell_type column in Info.txt is
+      `Type` (e.g., T, Mac, CAF, TEC, B, ...).
+
+  lung_kim:
+    task: classification
+    method: geo
+    source: GSE131907
+    files:
+      - GSE131907_Lung_Cancer_raw_UMI_matrix.txt.gz
+      - GSE131907_Lung_Cancer_cell_annotation.txt.gz
+    target: data/raw/classification/lung_kim.h5ad
+    obs_required: [cell_type]
+    counts_state: raw_counts
+    reference: |
+      Kim N., Kim H.K., Lee K., Hong Y., Cho J.H., Choi J.W., Lee J.I.,
+      Suh Y.L., Ku B.M., Eum H.H., Choi S., Choi Y.L., Joung J.G., Park
+      W.Y., Jung H.A., Sun J.M., Lee S.H., Ahn J.S., Park K., Ahn M.J.,
+      Lee H.O.  "Single-cell RNA sequencing demonstrates the molecular and
+      cellular reprogramming of metastatic lung adenocarcinoma."
+      Nature Communications, 11:2285 (2020).
+    doi: https://doi.org/10.1038/s41467-020-16164-1
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE131907
+    notes: |
+      Large dense matrix (~10 GB uncompressed); load chunked or pre-filter
+      to tumor/normal subset.  Cell-type column in annotation file is
+      `Cell_type` and `Cell_subtype`.
+
+  gse296117:
+    task: classification
+    method: geo
+    source: GSE296117
+    files:
+      - GSE296117_RA_geo.rds
+    target: data/raw/classification/ra_gse296117.h5ad
+    obs_required: [cell_type]
+    counts_state: raw_counts
+    reference: |
+      A single-cell RNA-seq dataset of synovial fluid from rheumatoid
+      arthritis treated with TNF-alpha/JAK inhibitor.  GEO GSE296117
+      (PubMed 40494845; BioProject PRJNA1257822).
+    doi: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE296117
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE296117
+    notes: |
+      Single Seurat .rds (RNA assay = raw counts; a second mnn.reconstructed
+      assay is ignored).  100,387 cells x 27,464 genes.  Authors' `celltype`
+      (7 types: Macrophage, T cell, DC, NK cell, Fibroblast, ...) -> cell_type;
+      also carries patient/treatment(BT/AT)/drug(Adalimumab/Tofacitinib).
+      Gene symbols humanized to ENSG via scfm_eval.preprocessing.humanize_adata.
+      Built by assemble.py:assemble_gse296117 (runs export_seurat_rds.R) from
+      data/raw/classification/GSE296117/.
+
+  scgenescope:
+    task: classification
+    method: huggingface
+    source: altoslabs/scGeneScope
+    target: data/raw/classification/scgenescope.h5ad
+    obs_required: [cell_type]
+    counts_state: raw_counts
+    reference: |
+      Hao M., Gong J., Zeng X., Liu C., Guo Y., Cheng X., Wang T., Ma J.,
+      Zhang X., Song L.  "Large-scale foundation model on single-cell
+      transcriptomics."  Nature Methods, 21:1481–1491 (2024).
+      (scGeneScope curated single-cell benchmark suite released by Altos
+      Labs accompanying scFoundation.)
+    doi: https://doi.org/10.1038/s41592-024-02305-7
+    data_url: https://huggingface.co/datasets/altoslabs/scGeneScope
+    notes: |
+      HuggingFace datasets repo; we look for any *.h5ad under the snapshot.
+      Cite the Altos Labs HF page in addition to the scFoundation paper.
+
+  # ============================================================
+  # PSEUDOTIME
+  # ============================================================
+
+  emt_cook:
+    task: pseudotime
+    method: geo
+    source: GSE147405
+    files:
+      - GSE147405_A549_TGFB1_TimeCourse_UMI_matrix.csv.gz
+      - GSE147405_A549_TGFB1_TimeCourse_metadata.csv.gz
+    target: data/raw/pseudotime/emt_cook.h5ad
+    obs_required: [Time]
+    counts_state: raw_counts
+    reference: |
+      Cook D.P., Vanderhyden B.C.  "Context specificity of the EMT
+      transcriptional response."  Nature Communications, 11:2142 (2020).
+    doi: https://doi.org/10.1038/s41467-020-16066-2
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE147405
+    notes: |
+      A549 + TGFB1 time-course (the canonical pseudotime panel from the
+      paper).  Metadata column `Time` ∈ {0d, 8h, 1d, 3d, 7d, 8h_rm,
+      1d_rm, 3d_rm}.
+
+  veres:
+    task: pseudotime
+    method: geo
+    source: GSE114412
+    files:
+      - GSE114412_Stage_5.raw_indrops_counts.tsv.gz
+      - GSE114412_Stage_5.all.cell_metadata.tsv.gz
+    target: data/raw/pseudotime/veres.h5ad
+    obs_required: [day]
+    counts_state: raw_counts
+    reference: |
+      Veres A., Faust A.L., Bushnell H.L., Engquist E.N., Kenty J.H.,
+      Harb G., Poh Y.C., Sintov E., Gürtler M., Pagliuca F.W.,
+      Peterson Q.P., Melton D.A.  "Charting cellular identity during
+      human in vitro β-cell differentiation."  Nature, 569:368–373 (2019).
+    doi: https://doi.org/10.1038/s41586-019-1168-5
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE114412
+    notes: |
+      Stage 5 aggregate (~50k cells, days 0–7 within Stage 5).  Use `day`
+      column in cell_metadata.  Use the *Stage_6* pair for the extended
+      trajectory if needed.
+
+  hspc_bouman:
+    task: pseudotime
+    method: geo
+    source: GSE226824
+    files:
+      - GSE226824_HSPC-all_filtered.h5ad.gz
+    target: data/raw/pseudotime/hspc_bouman.h5ad
+    obs_required: [time]
+    counts_state: unknown_check
+    reference: |
+      Bouman B.J., Demerdash Y., Sood S., Grünschläger F., Pilz F.,
+      Itani A.R., Kuck A., Marot-Lassauzaie V., Haas S., Haghverdi L.
+      "Single-cell time series analysis reveals the dynamics of in vivo
+      hematopoietic stem cell aging."  Nature Communications, 15:7079
+      (2024).
+    doi: https://doi.org/10.1038/s41467-024-51442-2
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE226824
+    notes: |
+      GEO ships a ready-made gzipped h5ad: just gunzip into target.  Verify
+      obs after extraction (time column name may be `timepoint` or `day`).
+
+  gse322764:
+    task: pseudotime
+    method: geo
+    source: GSE322764
+    organism: Mus musculus
+    files:
+      - GSE322764_RAW.tar
+    target: data/raw/pseudotime/GSE322764.h5ad
+    obs_required: [age_numeric]
+    counts_state: raw_counts
+    reference: |
+      "Lineage and Organ Signals Sequentially Build Organ Intrinsic Nervous
+      Systems [scRNA-seq]."  GEO series GSE322764 (full citation TBD).
+    doi: ''
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE322764
+    notes: |
+      MOUSE dataset — gene-vocab compatibility is the gating issue: only
+      GeneCompass (human+mouse `h&m` token vocab, ENSMUSG) and UCE
+      (species="mouse") match genes natively; scFoundation / Tahoe / scGPT /
+      CellFM are human-only and need mouse->human ortholog mapping first.
+      19 GSM 10x triplets (barcodes/features/matrix.mtx.gz); the tar was
+      placed manually under data/raw/pseudotime/GSE322764/ (not via
+      download.py).  Per-cell age/tissue/cell-type/genotype are parsed from
+      the series_matrix Sample_characteristics lines.  age_numeric = mouse
+      days-post-coitum (E-stage as-is; P56 -> 19.5+56=75.5).  GSM9558094-100
+      (Heart, intrinsic cardiac neurons, E12.5->P56) form the clean
+      developmental trajectory and are flagged icn_series=True.
+
+  gse320427:
+    task: pseudotime
+    method: geo
+    source: GSE320427
+    organism: Ovis aries
+    files:
+      - GSE320427_RAW.tar
+    target: data/raw/pseudotime/GSE320427.h5ad
+    obs_required: [stage_numeric]
+    counts_state: raw_counts
+    reference: |
+      "A Single-Cell Transcriptomic Atlas of Symmetry Breaking in Sheep."
+      GEO series GSE320427 (full citation TBD).  Parse Biosciences Evercode.
+    doi: ''
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE320427
+    notes: |
+      SHEEP, but the deposited Seurat .rds uses HUMAN-ORTHOLOG uppercase gene
+      SYMBOLS as rownames (ENSOARG… only as fallback) -> the human-symbol FMs
+      (scFoundation / scGPT / CellFM / UCE species="human") match most genes
+      via feature_name; Tahoe / GeneCompass (need ENSG/ENSMUSG) do not.
+      Single 5 GB .rds (GSM9543171_in_vivo.rds); export_seurat_rds.R dumps
+      counts+meta, assemble_gse320427 builds the h5ad.  Per-cell `stage`
+      (E11, E11.5, E12.5E/L, E13.5E/L) -> numeric `stage_numeric` (E/L = late
+      gets +0.25); rich `lineage` annotation also preserved in obs.
+
+  gse277032_organoids:
+    task: pseudotime
+    method: geo
+    source: GSE277032
+    organism: Homo sapiens
+    files:
+      - GSE277032_RAW.tar
+      - GSE277032-GPL20301_series_matrix.txt.gz
+      - GSE277032-GPL24676_series_matrix.txt.gz
+    target: data/raw/pseudotime/GSE277032_organoids.h5ad
+    obs_required: [day]
+    counts_state: raw_counts
+    reference: |
+      Hall G.T. et al.  "An in vivo and in vitro spatiotemporal atlas of
+      human fetal midbrain development."  GEO series GSE277032.
+    doi: ''
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE277032
+    notes: |
+      Assembled from the nine single-cell organoid RNA-seq libraries only
+      (GSM8513025-GSM8513033), with sample-level differentiation day parsed
+      from GEO source_name_ch1: day 40, day 70, day 120.  Spatial Visium
+      libraries and fetal pooled libraries are deliberately excluded from this
+      benchmark object because the pseudotime evaluator expects scRNA-seq cells
+      and a per-cell/sample monotonic time label.
+
+  gse307094_counts:
+    task: pseudotime
+    method: geo
+    source: GSE307094
+    organism: Homo sapiens
+    files:
+      - GSE307094_expression_matrix_counts.mtx.gz
+      - GSE307094_expression_matrix_counts_barcodes.csv.gz
+      - GSE307094_expression_matrix_counts_genes.csv.gz
+      - GSE307094_series_matrix.txt.gz
+    target: data/raw/pseudotime/GSE307094_counts_unmapped.h5ad
+    obs_required: [barcode_batch]
+    counts_state: raw_counts
+    reference: |
+      Blanco-Luquin I. et al.  "Single-cell transcriptional patterns
+      impairment in an adult neurogenesis model of Alzheimer's disease."
+      GEO series GSE307094.
+    doi: ''
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE307094
+    notes: |
+      Counts can be assembled, but the local GEO supplementary files do not
+      contain an unambiguous cell barcode -> RNA sample/day mapping.  The
+      matrix barcodes have seven suffix groups (_1.._7), while the series
+      matrix describes eleven RNA-seq samples.  This object is therefore not
+      registered as benchmark-ready until an extra per-cell metadata file or
+      the exact suffix-to-sample mapping is provided.
+
+  # ============================================================
+  # PERTURBATION
+  # ============================================================
+
+  norman:
+    task: perturbation
+    method: geo
+    source: GSE133344
+    files:
+      - GSE133344_filtered_matrix.mtx.gz
+      - GSE133344_filtered_barcodes.tsv.gz
+      - GSE133344_filtered_genes.tsv.gz
+      - GSE133344_filtered_cell_identities.csv.gz
+    target: data/raw/perturbation/norman_2019.h5ad
+    obs_required: [guide_identity]
+    obs_control_label: NegCtrl1_NegCtrl0__NegCtrl1_NegCtrl0
+    counts_state: raw_counts
+    reference: |
+      Norman T.M., Horlbeck M.A., Replogle J.M., Ge A.Y., Xu A., Jost M.,
+      Gilbert L.A., Weissman J.S.  "Exploring genetic interaction manifolds
+      constructed from rich single-cell phenotypes."  Science,
+      365(6455):786–793 (2019).
+    doi: https://doi.org/10.1126/science.aax4438
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE133344
+    notes: |
+      K562 dual-guide Perturb-seq (~108k cells, ~290 single- or
+      double-guide perturbations).  Build AnnData from the
+      filtered_matrix/barcodes/genes triplet, attach guide_identity from
+      cell_identities.csv (column `guide_identity`).  Control = double
+      negative-control guide pair (verify exact string in csv).
+
+  adamson:
+    task: perturbation
+    method: geo
+    source: GSE90546
+    files:
+      - GSE90546_RAW.tar
+    target: data/raw/perturbation/adamson_2016.h5ad
+    obs_required: [perturbation]
+    obs_control_label: '*'
+    counts_state: raw_counts
+    reference: |
+      Adamson B., Norman T.M., Jost M., Cho M.Y., Nuñez J.K., Chen Y.,
+      Villalta J.E., Gilbert L.A., Horlbeck M.A., Hein M.Y., Pak R.A.,
+      Gray A.N., Gross C.A., Dixit A., Parnas O., Regev A., Weissman J.S.
+      "A multiplexed single-cell CRISPR screening platform enables
+      systematic dissection of the unfolded protein response."
+      Cell, 167(7):1867–1882.e21 (2016).
+    doi: https://doi.org/10.1016/j.cell.2016.11.048
+    data_url: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE90546
+    notes: |
+      UPR Perturb-seq.  The original deposition is GSE90546 (NOT
+      GSE114488).  Extract RAW.tar; per-GSM mtx triplets + cell metadata.
+      Control label varies per replicate; resolve from cell-barcode-to-
+      guide mapping table inside the tar.
+
+  # ============================================================
+  # UNAVAILABLE FROM THIS SERVER (figshare / 10x / SCP / pertpy-only)
+  # ============================================================
+  # The datasets below were requested but cannot be fetched from this
+  # network.  We keep the references here so they can be sourced manually
+  # (different machine + scp into data/raw/<task>/) without losing the
+  # primary citations.
+  #
+  #   pbmc3k / pbmc68k / pbmc95k:
+  #     Zheng G.X.Y. et al. "Massively parallel digital transcriptional
+  #     profiling of single cells."  Nat. Commun. 8:14049 (2017).
+  #     doi:10.1038/ncomms14049 — distributed by 10x Genomics (CDN blocked).
+  #
+  #   pbmc12k:
+  #     Hao Y. et al. "Integrated analysis of multimodal single-cell data."
+  #     Cell 184(13):3573-3587.e29 (2021).  doi:10.1016/j.cell.2021.04.048
+  #     — Seurat v4 CITE-seq PBMC; distributed via figshare / scvi-tools.
+  #
+  #   hpancreas (16k Pancreas):
+  #     Baron M. et al. "A single-cell transcriptomic map of the human and
+  #     mouse pancreas reveals inter- and intra-cell population structure."
+  #     Cell Systems 3(4):346-360 (2016).  doi:10.1016/j.cels.2016.08.011
+  #     — scGPT-released pre-processed h5ad on figshare.
+  #
+  #   tabula_sapiens:
+  #     The Tabula Sapiens Consortium.  "The Tabula Sapiens: a multiple-
+  #     organ, single-cell transcriptomic atlas of humans."  Science
+  #     376(6594):eabl4896 (2022).  doi:10.1126/science.abl4896 — figshare.
+  #
+  #   immune_tica:
+  #     Domínguez Conde C. et al. "Cross-tissue immune cell analysis
+  #     reveals tissue-specific features in humans."  Science 376(6594):
+  #     eabl5197 (2022).  doi:10.1126/science.abl5197 — TICA portal.
+  #
+  #   cortex_siletti:
+  #     Siletti K. et al. "Transcriptomic diversity of cell types across
+  #     the adult human brain."  Science 382(6667):eadd7046 (2023).
+  #     doi:10.1126/science.add7046 — CELLxGENE Census.
+  #
+  #   covid_cui:
+  #     Lotfollahi M. et al. "Mapping single-cell data to reference atlases
+  #     by transfer learning."  Nat. Biotechnol. 40:121-130 (2022).
+  #     doi:10.1038/s41587-021-01001-7 — scArches reproducibility repo.
+  #
+  #   ms:
+  #     Schirmer L. et al. "Neuronal vulnerability and multilineage
+  #     diversity in multiple sclerosis."  Nature 573:75-82 (2019).
+  #     doi:10.1038/s41586-019-1404-z — EBI ExpAtlas E-HCAD-35.
+  #
+  #   uc_epi_imm:
+  #     Smillie C.S. et al. "Intra- and inter-cellular rewiring of the
+  #     human colon during ulcerative colitis."  Cell 178(3):714-730
+  #     (2019).  doi:10.1016/j.cell.2019.06.029 — Broad SCP SCP551.
+  #
+  #   hspc_weinreb:
+  #     Weinreb C. et al. "Lineage tracing on transcriptional landscapes
+  #     links state to fate during differentiation."  Science 367(6479):
+  #     eaaw3381 (2020).  doi:10.1126/science.aaw3381 — AllonKleinLab repo.
+  #
+  #   embryoid_bodies:
+  #     Moon K.R. et al. "Visualizing structure and transitions in
+  #     high-dimensional biological data."  Nat. Biotechnol. 37:1482-1492
+  #     (2019).  doi:10.1038/s41587-019-0336-3 — Mendeley Data.
+  #
+  #   zheng68k (PBMC 68k bead-sorted):
+  #     Zheng G.X.Y. et al. (same as pbmc68k above) — 10x distribution
+  #     only.  GSE98638 is a *different* dataset (HCC T-cells).
+  #
+  # See feedback_dataset_sources.md.  If needed, fetch on a different
+  # machine and `scp` into data/raw/<task>/.

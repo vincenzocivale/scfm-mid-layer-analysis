@@ -124,7 +124,12 @@ class UCEEmbedder(BaseEmbedder):
     # ------------------------------------------------------------------ #
 
     def _ensure_model_files(self) -> None:
-        """Download all UCE model artefacts from figshare if not already present."""
+        """Download all UCE model artefacts from figshare if not already present.
+
+        Note: if figshare is network-blocked, delete the 0-byte placeholder files
+        created by a failed download so this function retries. Alternative: set
+        UCE_MODEL_CKPT and UCE_MODEL_FILES_DIR to paths with pre-downloaded files.
+        """
         from .vendor.uce.download import figshare_download
 
         self.model_files_dir.mkdir(parents=True, exist_ok=True)
@@ -134,20 +139,38 @@ class UCEEmbedder(BaseEmbedder):
             ("species_offsets.pkl",     _FIGSHARE["species_offsets.pkl"]),
             ("all_tokens.torch",        _FIGSHARE["all_tokens.torch"]),
         ]:
-            figshare_download(url, str(self.model_files_dir / filename))
+            path = self.model_files_dir / filename
+            # Remove 0-byte placeholder left by an interrupted download so it
+            # retries instead of silently skipping.
+            if path.exists() and path.stat().st_size == 0:
+                path.unlink()
+            figshare_download(url, str(path))
 
         prot_dir = self.model_files_dir / "protein_embeddings"
         if not prot_dir.exists():
-            archive = str(self.model_files_dir / "protein_embeddings.tar.gz")
-            figshare_download(_FIGSHARE["protein_embeddings.tar.gz"], archive)
+            archive = self.model_files_dir / "protein_embeddings.tar.gz"
+            if archive.exists() and archive.stat().st_size == 0:
+                archive.unlink()
+            figshare_download(_FIGSHARE["protein_embeddings.tar.gz"], str(archive))
 
         model_path = Path(self.model_loc)
         model_path.parent.mkdir(parents=True, exist_ok=True)
+        if model_path.exists() and model_path.stat().st_size == 0:
+            model_path.unlink()
         figshare_download(_FIGSHARE["4layer_model.torch"], str(model_path))
 
     def load_model(self) -> None:
         if self.auto_download:
             self._ensure_model_files()
+
+        model_path = Path(self.model_loc)
+        if not model_path.exists() or model_path.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"UCE checkpoint not found or empty: {model_path}\n"
+                "Figshare may be network-blocked. Download manually from:\n"
+                f"  {_FIGSHARE['4layer_model.torch']}\n"
+                "and place it at the path above (or set UCE_MODEL_CKPT)."
+            )
 
         from torch import nn
         from .vendor.uce.model import TransformerModel
@@ -343,6 +366,9 @@ class UCEEmbedder(BaseEmbedder):
                     cell_sentences = cell_sentences.permute(1, 0).to(self.device)
                     token_embs = self.model.pe_embedding(cell_sentences)
                     token_embs = F.normalize(token_embs.to(dtype), dim=2)
+                    # PAD token (idx=0) has an all-zero embedding; F.normalize produces NaN.
+                    # Replace NaN with 0 — PAD positions are masked in attention anyway.
+                    token_embs = torch.nan_to_num(token_embs, nan=0.0)
 
                     mask = mask.to(self.device, dtype=dtype)
                     self.model.forward(token_embs, mask=mask)

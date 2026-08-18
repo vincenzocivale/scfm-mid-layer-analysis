@@ -15,7 +15,7 @@ runs:
     model: tahoe
     model_size: 1b
     tasks: [classification]
-  - dataset: GSE276896
+  - dataset: inner_ear
     model: scfoundation
     tasks: [pseudotime]
   ...
@@ -46,7 +46,7 @@ Le shell/script sottostanti restano direttamente invocabili — il driver è sol
 
 ```bash
 # Solo extraction
-MODELS=scfoundation ./run_embedding_extraction.sh data/raw/brain_dataset.h5ad
+MODELS=scfoundation ./run_embedding_extraction.sh data/raw/classification/brain_dataset.h5ad
 
 # Solo classification su un embedding già estratto
 ./.venv/bin/python scripts/run_cell_type_classification.py \

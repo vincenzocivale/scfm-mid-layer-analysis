@@ -32,7 +32,7 @@ def run_perturbation_pipeline(
         control_label: Label for control cells.
         dose_key: Optional column in .obs with dose information.
         pathway_json_path: Optional path to a JSON file mapping perturbations to pathways.
-        de_top_n: Number of top DE genes to use for the reference.
+        de_top_n: DEPRECATED — reference now uses full gene set from Wilcoxon DE.
         corr_method: Correlation method for reference ('spearman' or 'pearson').
     """
     print("--- Starting Perturbation Analysis Pipeline ---")
@@ -58,7 +58,7 @@ def run_perturbation_pipeline(
     # 2. Build Biological Reference
     print("\n--- Building Biological Reference Matrix ---")
     ref_builder = ReferenceBuilder(adata, perturb_key=perturb_key, control_label=control_label)
-    reference_sim_matrix = ref_builder.build(de_top_n=de_top_n, corr_method=corr_method)
+    reference_sim_matrix = ref_builder.build(corr_method=corr_method)
     
     # Save the reference matrix for inspection
     ref_matrix_path = os.path.join(output_dir, f"{input_stem}_reference_de_similarity.csv")

@@ -3,52 +3,84 @@
 # For each dataset: file path, source, supported downstream tasks, and the
 # task-specific `.obs` columns expected by the corresponding evaluator.
 #
+# Raw files are organized under data/raw/<task>/ to mirror their downstream use.
 # Keep this in sync with docs/datasets.md.
 
 datasets:
 
-  brain:
-    path: data/raw/brain_dataset.h5ad
-    source: https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e
-    counts_state: log1p_normalized       # adata.X is normalized+log1p; raw counts in adata.raw
-    tasks:
-      classification:
-        cell_type_column: cell_type
-
-  spinal:
-    path: data/raw/spinal_dataset.h5ad
-    source: https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e
-    counts_state: log1p_normalized
-    tasks:
-      classification:
-        cell_type_column: cell_type
-
-  liver:
-    path: data/raw/liver_dataset.h5ad
-    source: https://cellxgene.cziscience.com/collections/be679cb1-35f0-46c9-9a2d-30691862a54a
-    counts_state: log1p_normalized
-    tasks:
-      classification:
-        cell_type_column: cell_type
-
   inner_ear:
-    path: data/raw/inner_ear_development.h5ad
+    path: data/raw/pseudotime/inner_ear_development.h5ad
     source: TBD                          # GEO accession to be filled in
     counts_state: TBD                    # verify
     tasks:
       pseudotime:
         time_column: week
 
-  GSE276896:
-    path: data/raw/GSE276896_adata_meta.h5ad
-    source: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE276896
-    counts_state: log1p_normalized
+  gse322764:
+    path: data/raw/pseudotime/GSE322764.h5ad
+    source: GEO GSE322764
+    organism: Mus musculus               # FM-compat: GeneCompass + UCE(mouse) only;
+                                         # scFoundation/Tahoe/scGPT/CellFM are human-only
+    counts_state: raw_counts             # int64 UMI counts in X; var_names = ENSMUSG
     tasks:
       pseudotime:
-        time_column: week
+        time_column: age_numeric         # mouse dpc (E12.5->12.5 ... P56->75.5)
+        # Cleanest trajectory: subset to obs['icn_series'] (intrinsic cardiac
+        # neurons, Heart, E12.5->P56). Full object also spans gut/lung/pancreas.
+
+  gse320427:
+    path: data/raw/pseudotime/GSE320427.h5ad
+    source: GEO GSE320427
+    organism: Ovis aries                 # FM-compat: human-symbol FMs (scFoundation/
+                                         # scGPT/CellFM/UCE-human) — rownames are human
+                                         # ortholog symbols. Tahoe/GeneCompass do NOT match.
+    counts_state: raw_counts             # raw counts from Seurat @counts; var_names = symbols
+    tasks:
+      pseudotime:
+        time_column: stage_numeric       # sheep dpc (E11->11.0 ... E13.5L->13.75)
+        # Per-cell `lineage` annotation also available in obs.
+
+  gse277032_organoids:
+    path: data/raw/pseudotime/GSE277032_organoids.h5ad
+    source: GEO GSE277032
+    organism: Homo sapiens
+    counts_state: raw_counts
+    tasks:
+      pseudotime:
+        time_column: day                 # organoid differentiation day: 40, 70, 120
+
+  bessier_bro_timecourse:
+    path: data/raw/pseudotime/bessier_et_al/bro_timecourse_fm_ready.h5ad
+    source: Bessier et al. Nat Cancer 2026
+    organism: Homo sapiens
+    counts_state: log1p_normalized       # X log1p-normalized; raw.X stores raw counts for raw-count FMs
+    reference: |
+      Bessler, N., Wezenaar, A.K.L., Ariese, H.C.R. et al.
+      "De novo H3.3K27M-altered diffuse midline glioma in human brainstem
+      organoids to dissect GD2 CAR T cell function." Nat Cancer 7, 316-333
+      (2026).
+    doi: https://doi.org/10.1038/s43018-025-01084-0
+    tasks:
+      pseudotime:
+        time_column: day                 # BRO differentiation day: 5, 11, 14, 20, 30, 60, 90, 120
+
+  bessier_dmgo:
+    path: data/raw/pseudotime/bessier_et_al/dmgo_fm_ready.h5ad
+    source: Bessier et al. Nat Cancer 2026
+    organism: Homo sapiens
+    counts_state: log1p_normalized       # X log1p-normalized; raw.X stores raw counts for raw-count FMs
+    reference: |
+      Bessler, N., Wezenaar, A.K.L., Ariese, H.C.R. et al.
+      "De novo H3.3K27M-altered diffuse midline glioma in human brainstem
+      organoids to dissect GD2 CAR T cell function." Nat Cancer 7, 316-333
+      (2026).
+    doi: https://doi.org/10.1038/s43018-025-01084-0
+    tasks:
+      pseudotime:
+        time_column: timepoint           # parsed from sample/RunID: t1 or t2
 
   D1_Rest:
-    path: data/raw/D1_Rest.assigned_guide_undersampled.h5ad
+    path: data/raw/perturbation/D1_Rest.assigned_guide_undersampled.h5ad
     source: Perturb-seq T-cell dataset (paper reference TBD)
     counts_state: raw_counts
     tasks:
@@ -57,7 +89,7 @@ datasets:
         control_label: non-targeting     # verify against actual values in adata.obs
 
   D1_Stim8hr:
-    path: data/raw/D1_Stim8hr.assigned_guide_undersampled.h5ad
+    path: data/raw/perturbation/D1_Stim8hr.assigned_guide_undersampled.h5ad
     source: Perturb-seq T-cell dataset (paper reference TBD)
     counts_state: raw_counts
     tasks:
@@ -66,10 +98,165 @@ datasets:
         control_label: non-targeting
 
   D1_Stim48hr:
-    path: data/raw/D1_Stim48hr.assigned_guide_undersampled.h5ad
+    path: data/raw/perturbation/D1_Stim48hr.assigned_guide_undersampled.h5ad
     source: Perturb-seq T-cell dataset (paper reference TBD)
     counts_state: raw_counts
     tasks:
       perturbation:
         perturb_key: gene_name
         control_label: non-targeting
+
+  # --- Added from scripts/dataset_downloads/manifest.yaml (GEO/HF) ---
+
+  liver_ma:
+    path: data/raw/classification/liver_ma.h5ad
+    source: GEO GSE151530
+    reference: |
+      Ma L., Hernandez M.O., Zhao Y., Mehta M., Tran B., Kelly M., Rae Z.,
+      Hernandez J.M., Davis J.L., Martin S.P., Kleiner D.E., Hewitt S.M.,
+      Ylaya K., Wood B.J., Greten T.F., Wang X.W.
+      "Tumor cell biodiversity drives microenvironmental reprogramming in
+      liver cancer."  Cancer Cell 36(4):418–430.e6 (2019).
+    doi: https://doi.org/10.1016/j.ccell.2019.08.007
+    counts_state: raw_counts
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  lung_kim:
+    path: data/raw/classification/lung_kim.h5ad
+    source: GEO GSE131907
+    reference: |
+      Kim N., Kim H.K., Lee K., Hong Y., Cho J.H., Choi J.W., Lee J.I.,
+      Suh Y.L., Ku B.M., Eum H.H., Choi S., Choi Y.L., Joung J.G., Park
+      W.Y., Jung H.A., Sun J.M., Lee S.H., Ahn J.S., Park K., Ahn M.J.,
+      Lee H.O.  "Single-cell RNA sequencing demonstrates the molecular and
+      cellular reprogramming of metastatic lung adenocarcinoma."
+      Nature Communications 11:2285 (2020).
+    doi: https://doi.org/10.1038/s41467-020-16164-1
+    counts_state: raw_counts
+    tasks:
+      classification:
+        cell_type_column: cell_type     # alias of Cell_type
+
+  ra_gse296117:
+    path: data/raw/classification/ra_gse296117.h5ad
+    source: GEO GSE296117
+    organism: Homo sapiens
+    reference: |
+      A single-cell RNA-seq dataset of synovial fluid from rheumatoid
+      arthritis treated with TNF-alpha/JAK inhibitor.  GEO GSE296117
+      (PubMed 40494845; BioProject PRJNA1257822).
+    counts_state: raw_counts            # X = int64 raw counts; var_names = ENSG (humanized)
+    tasks:
+      classification:
+        cell_type_column: cell_type     # 7 types from authors' `celltype`
+    notes: |
+      Built by scripts/dataset_downloads/assemble.py:assemble_gse296117 from
+      the authors' Seurat .rds (RNA assay). Symbols humanized to ENSG
+      (feature_name=symbol). 100,387 cells; also has patient/treatment/drug obs.
+
+  norman_2019:
+    path: data/raw/perturbation/norman_2019.h5ad
+    source: GEO GSE133344
+    reference: |
+      Norman T.M., Horlbeck M.A., Replogle J.M., Ge A.Y., Xu A., Jost M.,
+      Gilbert L.A., Weissman J.S.  "Exploring genetic interaction manifolds
+      constructed from rich single-cell phenotypes."  Science
+      365(6455):786–793 (2019).
+    doi: https://doi.org/10.1126/science.aax4438
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: guide_identity
+        control_label: NegCtrl1_NegCtrl0__NegCtrl1_NegCtrl0
+
+  adamson_2016:
+    path: data/raw/perturbation/adamson_2016.h5ad
+    source: GEO GSE90546 (pilot 3 GSMs)
+    reference: |
+      Adamson B., Norman T.M., Jost M., Cho M.Y., Nuñez J.K., Chen Y.,
+      Villalta J.E., Gilbert L.A., Horlbeck M.A., Hein M.Y., Pak R.A.,
+      Gray A.N., Gross C.A., Dixit A., Parnas O., Regev A., Weissman J.S.
+      "A multiplexed single-cell CRISPR screening platform enables
+      systematic dissection of the unfolded protein response."
+      Cell 167(7):1867–1882.e21 (2016).
+    doi: https://doi.org/10.1016/j.cell.2016.11.048
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: perturbation        # alias of `guide identity`
+        control_label: 3x_neg_ctrl_pMJ144-1    # also: 3x_neg_ctrl_pMJ144-2
+
+  GSE294098:
+    path: data/raw/perturbation/GSE294098.h5ad
+    source: GEO GSE294098
+    reference: |
+      Aryal S., Lu R., Cheng C. et al.  "Integrated Perturb-seq and
+      Computational Modeling Identifies KAT6A-Menin-DOT1L Synergy and
+      Associated Gene Program as Therapeutic Targets in Acute Myeloid
+      Leukemia [Perturb-seq]."  GEO GSE294098.
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: target_gene
+        control_label: AAVS1
+    notes: |
+      Built by scripts/dataset_downloads/prepare_gse294098.py from the raw
+      (unfiltered) 10x barcode matrix — no guide calls were supplied, so
+      cell calling (min_genes=1000, ~31.6k of 31,015 reported cells) and
+      guide assignment (per-cell argmax over CRISPR Guide Capture UMIs,
+      >=3 UMIs and >50% majority) are done in-script. AAVS1 = safe-harbor
+      non-targeting control guides.
+
+  GSE303158_primed:
+    path: data/raw/perturbation/GSE303158_primed.h5ad
+    source: GEO GSE303158
+    reference: |
+      A single-cell CRISPR screen defines a gene regulatory network
+      governing human pluripotency in primed and naive cells.  GEO
+      GSE303158 (primed hPSC condition).
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: perturbed_gene
+        control_label: CTRL
+    notes: |
+      Built by scripts/dataset_downloads/prepare_gse303158.py from the
+      authors' post-Mixscape Seurat object (primed condition); perturbation
+      calls (target/guide/mixscape_class*) are kept as-is. Gene symbols
+      humanized to ENSG via scfm_eval.preprocessing.humanize_adata.
+
+  GSE303158_naive:
+    path: data/raw/perturbation/GSE303158_naive.h5ad
+    source: GEO GSE303158
+    reference: |
+      A single-cell CRISPR screen defines a gene regulatory network
+      governing human pluripotency in primed and naive cells.  GEO
+      GSE303158 (naive hPSC condition).
+    counts_state: raw_counts
+    tasks:
+      perturbation:
+        perturb_key: perturbed_gene
+        control_label: CTRL
+    notes: |
+      Built by scripts/dataset_downloads/prepare_gse303158.py from the
+      authors' post-Mixscape Seurat object (naive condition); perturbation
+      calls (target/guide/mixscape_class*) are kept as-is. Gene symbols
+      humanized to ENSG via scfm_eval.preprocessing.humanize_adata.
+
+  tabula-blood:
+    path: data/raw/classification/tabula/tabula-blood.h5ad
+    source: Tabula Sapiens (CZ CELLxGENE)
+    counts_state: log1p_normalized
+    tasks:
+      classification:
+        cell_type_column: cell_type
+
+  tabula-immune:
+    path: data/raw/classification/tabula/tabula-immune.h5ad
+    source: Tabula Sapiens (CZ CELLxGENE)
+    counts_state: log1p_normalized
+    tasks:
+      classification:
+        cell_type_column: cell_type

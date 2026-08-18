@@ -31,11 +31,11 @@ Lo script shell rileva automaticamente il numero di layer e processa l'h5ad a ch
 ```bash
 # scFoundation (12 layer)
 MODELS=scfoundation CHUNK_SIZE=20000 BATCH_SIZE=1 \
-  ./run_embedding_extraction.sh data/raw/brain_dataset.h5ad
+  ./run_embedding_extraction.sh data/raw/classification/brain_dataset.h5ad
 
 # Tahoe-X1 (model size 70m / 1b / 3b)
 MODELS=tahoe TAHOE_MODEL_SIZE=1b CHUNK_SIZE=50000 BATCH_SIZE=16 \
-  ./run_embedding_extraction.sh data/raw/liver_dataset.h5ad --no-fp16
+  ./run_embedding_extraction.sh data/raw/classification/liver_dataset.h5ad --no-fp16
 ```
 
 Output in `data/embeddings/<input>_<model>[_<size>]/`.
@@ -52,7 +52,7 @@ Ogni pipeline scopre gli embedding per layer cercando `X_layer_*` in `adata.obsm
 
 # Pseudo-time
 ./.venv/bin/python scripts/run_pseudotime_analysis.py \
-  --input data/embeddings/GSE276896_timeordered.h5ad \
+  --input data/embeddings/inner_ear_development_tahoe_1b.h5ad \
   --time_column week
 
 # Perturbation
