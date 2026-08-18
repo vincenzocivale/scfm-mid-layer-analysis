@@ -6,9 +6,6 @@ I raw sono organizzati in sottocartelle per task: `data/raw/{classification,pseu
 
 | Dataset key | File | Sorgente | Reference (DOI) | Task | Key col |
 |---|---|---|---|---|---|
-| `brain` | `classification/brain_dataset.h5ad` | [CellxGene 0986e4cd](https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e) | — | classification | `cell_type` |
-| `spinal` | `classification/spinal_dataset.h5ad` | [CellxGene 0986e4cd](https://cellxgene.cziscience.com/collections/0986e4cd-7a58-405d-9b91-4b199bb4124e) | — | classification | `cell_type` |
-| `liver` | `classification/liver_dataset.h5ad` | [CellxGene be679cb1](https://cellxgene.cziscience.com/collections/be679cb1-35f0-46c9-9a2d-30691862a54a) | — | classification | `cell_type` |
 | `inner_ear` | `pseudotime/inner_ear_development.h5ad` | TBD (GEO?) | TBD | pseudotime | `week` |
 | `D1_Rest` | `perturbation/D1_Rest.assigned_guide_undersampled.h5ad` | Perturb-seq dataset | TBD | perturbation | `gene_name` |
 | `D1_Stim8hr` | `perturbation/D1_Stim8hr.assigned_guide_undersampled.h5ad` | Perturb-seq dataset | TBD | perturbation | `gene_name` |
@@ -41,7 +38,6 @@ Per gli altri due task, non c'è ancora una baseline automatica. Aggiungerla è 
 
 Lo stato dei dati in `data/raw/` non è uniforme:
 
-- I dataset CellxGene (brain, spinal, liver) sono già **normalized + log1p** in `adata.X`, con i raw counts in `adata.raw`.
 - I dataset Perturb-seq sono in **raw counts** in `adata.X`.
 
 Questo è critico perché:

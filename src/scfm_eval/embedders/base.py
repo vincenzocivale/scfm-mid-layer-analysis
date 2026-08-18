@@ -10,9 +10,9 @@ class BaseEmbedder(ABC):
     
     def __init__(self, model_name: str, device: str = "auto"):
         self.model_name = model_name
-        self.device = torch.device(
-            "cuda" if device == "auto" and torch.cuda.is_available() else device
-        )
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = torch.device(device)
     
     @abstractmethod
     def load_model(self):

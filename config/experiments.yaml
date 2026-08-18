@@ -9,176 +9,243 @@
 
 runs:
 
-  # ── Cell-type classification: brain × {scfoundation, tahoe-1b} ─────────────
-  - dataset: brain
+  # ── Cell-type classification ────────────────────────────────────────────
+  - dataset: ra_gse296117
     model: scfoundation
     tasks: [classification]
 
-  - dataset: brain
+  - dataset: ra_gse296117
     model: tahoe
     model_size: 1b
     tasks: [classification]
 
-  - dataset: spinal
-    model: scfoundation
-    tasks: [classification]
-
-  - dataset: spinal
-    model: tahoe
-    model_size: 1b
-    tasks: [classification]
-
-  - dataset: liver
-    model: scfoundation
-    tasks: [classification]
-
-  - dataset: liver
-    model: tahoe
-    model_size: 1b
-    tasks: [classification]
-
-  - dataset: brain
+  - dataset: ra_gse296117
     model: scgpt
     tasks: [classification]
 
-  - dataset: spinal
-    model: scgpt
-    tasks: [classification]
-
-  - dataset: liver
-    model: scgpt
-    tasks: [classification]
-
-  - dataset: brain
-    model: cellfm
-    tasks: [classification]
-
-  - dataset: spinal
-    model: cellfm
-    tasks: [classification]
-
-  - dataset: liver
-    model: cellfm
-    tasks: [classification]
-
-  - dataset: brain
+  - dataset: ra_gse296117
     model: uce
     tasks: [classification]
 
-  - dataset: spinal
-    model: uce
-    tasks: [classification]
-
-  - dataset: liver
-    model: uce
-    tasks: [classification]
-
-  - dataset: brain
-    model: genecompass
-    tasks: [classification]
-
-  - dataset: spinal
-    model: genecompass
-    tasks: [classification]
-
-  - dataset: liver
-    model: genecompass
-    tasks: [classification]
-
-  # ── Tabula Sapiens: cell-type classification ───────────────────────────────
-  - dataset: tabula-blood
-    model: scfoundation
-    tasks: [classification]
-
-  - dataset: tabula-blood
-    model: tahoe
-    model_size: 1b
-    tasks: [classification]
-
-  - dataset: tabula-blood
-    model: scgpt
-    tasks: [classification]
-
-  - dataset: tabula-blood
-    model: uce
-    tasks: [classification]
-
-  - dataset: tabula-blood
-    model: genecompass
-    tasks: [classification]
-
-  - dataset: tabula-immune
-    model: scfoundation
-    tasks: [classification]
-
-  - dataset: tabula-immune
-    model: tahoe
-    model_size: 1b
-    tasks: [classification]
-
-  - dataset: tabula-immune
-    model: scgpt
-    tasks: [classification]
-
-  - dataset: tabula-immune
-    model: uce
-    tasks: [classification]
-
-  - dataset: tabula-immune
+  - dataset: ra_gse296117
     model: genecompass
     tasks: [classification]
 
   # ── Pseudotime ─────────────────────────────────────────────────────────────
-  - dataset: inner_ear
+  - dataset: gse277032_organoids
     model: scfoundation
     tasks: [pseudotime]
 
-  - dataset: inner_ear
+  - dataset: gse277032_organoids
     model: tahoe
     model_size: 1b
     tasks: [pseudotime]
 
-  - dataset: inner_ear
+  - dataset: gse277032_organoids
     model: scgpt
     tasks: [pseudotime]
 
-  - dataset: inner_ear
-    model: cellfm
-    tasks: [pseudotime]
-
-  - dataset: inner_ear
+  - dataset: gse277032_organoids
     model: uce
     tasks: [pseudotime]
 
-  - dataset: inner_ear
+  - dataset: gse277032_organoids
+    model: genecompass
+    tasks: [pseudotime]
+
+  - dataset: bessier_bro_timecourse
+    model: scfoundation
+    tasks: [pseudotime]
+
+  - dataset: bessier_bro_timecourse
+    model: tahoe
+    model_size: 1b
+    tasks: [pseudotime]
+
+  - dataset: bessier_bro_timecourse
+    model: scgpt
+    tasks: [pseudotime]
+
+  - dataset: bessier_bro_timecourse
+    model: uce
+    tasks: [pseudotime]
+
+  - dataset: bessier_bro_timecourse
+    model: genecompass
+    tasks: [pseudotime]
+
+  - dataset: bessier_dmgo
+    model: scfoundation
+    tasks: [pseudotime]
+
+  - dataset: bessier_dmgo
+    model: tahoe
+    model_size: 1b
+    tasks: [pseudotime]
+
+  - dataset: bessier_dmgo
+    model: scgpt
+    tasks: [pseudotime]
+
+  - dataset: bessier_dmgo
+    model: uce
+    tasks: [pseudotime]
+
+  - dataset: bessier_dmgo
     model: genecompass
     tasks: [pseudotime]
 
   # ── Perturbation response ──────────────────────────────────────────────────
-  - dataset: D1_Stim8hr
+  - dataset: GSE294098
     model: scfoundation
     tasks: [perturbation]
 
-  - dataset: D1_Stim8hr
+  - dataset: GSE294098
     model: tahoe
     model_size: 1b
     tasks: [perturbation]
 
-  - dataset: D1_Stim8hr
+  - dataset: GSE294098
     model: scgpt
     tasks: [perturbation]
 
-  - dataset: D1_Stim8hr
-    model: cellfm
-    tasks: [perturbation]
-
-  - dataset: D1_Stim8hr
+  - dataset: GSE294098
     model: uce
     tasks: [perturbation]
 
-  - dataset: D1_Stim8hr
+  - dataset: GSE294098
     model: genecompass
     tasks: [perturbation]
+
+  - dataset: GSE303158_primed
+    model: scfoundation
+    tasks: [perturbation]
+
+  - dataset: GSE303158_primed
+    model: tahoe
+    model_size: 1b
+    tasks: [perturbation]
+
+  - dataset: GSE303158_primed
+    model: scgpt
+    tasks: [perturbation]
+
+  - dataset: GSE303158_primed
+    model: uce
+    tasks: [perturbation]
+
+  - dataset: GSE303158_primed
+    model: genecompass
+    tasks: [perturbation]
+
+  - dataset: GSE303158_naive
+    model: scfoundation
+    tasks: [perturbation]
+
+  - dataset: GSE303158_naive
+    model: tahoe
+    model_size: 1b
+    tasks: [perturbation]
+
+  - dataset: GSE303158_naive
+    model: scgpt
+    tasks: [perturbation]
+
+  - dataset: GSE303158_naive
+    model: uce
+    tasks: [perturbation]
+
+  - dataset: GSE303158_naive
+    model: genecompass
+    tasks: [perturbation]
+
+  # ── Excluded for now (2026-06-20) — revisit later ───────────────────────────
+  #
+  # tabula-blood / tabula-immune (classification): excluded per user decision;
+  # CellFM extraction on Tabula was already found impractical (~82h GPU), and
+  # tabula-immune is only partially evaluated (scfoundation only so far).
+  #
+  # - dataset: tabula-blood
+  #   model: scfoundation
+  #   tasks: [classification]
+  # - dataset: tabula-blood
+  #   model: tahoe
+  #   model_size: 1b
+  #   tasks: [classification]
+  # - dataset: tabula-blood
+  #   model: scgpt
+  #   tasks: [classification]
+  # - dataset: tabula-blood
+  #   model: uce
+  #   tasks: [classification]
+  # - dataset: tabula-blood
+  #   model: genecompass
+  #   tasks: [classification]
+  # - dataset: tabula-immune
+  #   model: scfoundation
+  #   tasks: [classification]
+  # - dataset: tabula-immune
+  #   model: tahoe
+  #   model_size: 1b
+  #   tasks: [classification]
+  # - dataset: tabula-immune
+  #   model: scgpt
+  #   tasks: [classification]
+  # - dataset: tabula-immune
+  #   model: uce
+  #   tasks: [classification]
+  # - dataset: tabula-immune
+  #   model: genecompass
+  #   tasks: [classification]
+  #
+  # inner_ear (pseudotime): excluded — only 3/6 models have merged embeddings
+  # (scfoundation, scgpt, tahoe_1b); cellfm/uce/genecompass extraction missing,
+  # and `source`/`counts_state` are still TBD in config/datasets.yaml.
+  #
+  # - dataset: inner_ear
+  #   model: scfoundation
+  #   tasks: [pseudotime]
+  # - dataset: inner_ear
+  #   model: tahoe
+  #   model_size: 1b
+  #   tasks: [pseudotime]
+  # - dataset: inner_ear
+  #   model: scgpt
+  #   tasks: [pseudotime]
+  # - dataset: inner_ear
+  #   model: cellfm
+  #   tasks: [pseudotime]
+  # - dataset: inner_ear
+  #   model: uce
+  #   tasks: [pseudotime]
+  # - dataset: inner_ear
+  #   model: genecompass
+  #   tasks: [pseudotime]
+  #
+  # D1_Rest / D1_Stim8hr / D1_Stim48hr (perturbation): excluded — zero
+  # embeddings computed yet (fresh GPU extraction needed for all 6 models),
+  # the old results were bug-affected and have just been deleted, and
+  # `source` is still TBD in config/datasets.yaml.
+  #
+  # - dataset: D1_Stim8hr
+  #   model: scfoundation
+  #   tasks: [perturbation]
+  # - dataset: D1_Stim8hr
+  #   model: tahoe
+  #   model_size: 1b
+  #   tasks: [perturbation]
+  # - dataset: D1_Stim8hr
+  #   model: scgpt
+  #   tasks: [perturbation]
+  # - dataset: D1_Stim8hr
+  #   model: cellfm
+  #   tasks: [perturbation]
+  # - dataset: D1_Stim8hr
+  #   model: uce
+  #   tasks: [perturbation]
+  # - dataset: D1_Stim8hr
+  #   model: genecompass
+  #   tasks: [perturbation]
 
 # Stage-1 defaults (overridable per-run if needed)
 extraction_defaults:

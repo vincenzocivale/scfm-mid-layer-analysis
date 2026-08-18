@@ -2,6 +2,7 @@ import gc
 
 import numpy as np
 import scanpy as sc
+from joblib import Parallel, delayed
 from scipy.sparse import issparse
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
@@ -43,7 +44,9 @@ class ClassificationEvaluator:
         )
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
         scoring = ['accuracy', 'f1_macro', 'precision_macro', 'recall_macro']
-        scores = cross_validate(clf, X, y, cv=cv, scoring=scoring, n_jobs=1)
+        # lbfgs solver has no internal threading, so running the 5 folds in
+        # parallel is safe (no oversubscription) and doesn't change results.
+        scores = cross_validate(clf, X, y, cv=cv, scoring=scoring, n_jobs=5)
         return {
             'Accuracy':           float(np.mean(scores['test_accuracy'])),
             'Accuracy_std':       float(np.std(scores['test_accuracy'])),
@@ -56,12 +59,15 @@ class ClassificationEvaluator:
         }
 
     def _metric_knn(self, X, y):
+        # Parallelize across the 5 CV folds instead of inside KNeighborsClassifier:
+        # 5-way fold parallelism plus single-threaded kNN search avoids the
+        # oversubscription of 5 folds x 16 threads, with identical results.
         clf = make_pipeline(
             StandardScaler(with_mean=True),
-            KNeighborsClassifier(n_neighbors=self.k_neighbors, n_jobs=16),
+            KNeighborsClassifier(n_neighbors=self.k_neighbors, n_jobs=1),
         )
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
-        scores = cross_validate(clf, X, y, cv=cv, scoring=['accuracy', 'f1_macro'], n_jobs=1)
+        scores = cross_validate(clf, X, y, cv=cv, scoring=['accuracy', 'f1_macro'], n_jobs=5)
         return {
             'kNN_Accuracy':     float(np.mean(scores['test_accuracy'])),
             'kNN_Accuracy_std': float(np.std(scores['test_accuracy'])),
@@ -73,10 +79,14 @@ class ClassificationEvaluator:
         # Bootstrap over subsamples (same idx for X and y) to get mean ± std.
         rng = np.random.default_rng(self.seed)
         n = min(sample_size, X.shape[0])
-        scores = []
-        for _ in range(n_bootstrap):
-            idx = rng.choice(X.shape[0], n, replace=True)
-            scores.append(float(silhouette_score(X[idx], y[idx], metric='euclidean')))
+        # Draw all bootstrap indices sequentially first (preserves the exact RNG
+        # draw order/values of the original loop), then compute each O(n^2)
+        # silhouette_score in parallel.
+        idxs = [rng.choice(X.shape[0], n, replace=True) for _ in range(n_bootstrap)]
+        scores = Parallel(n_jobs=n_bootstrap)(
+            delayed(silhouette_score)(X[idx], y[idx], metric='euclidean') for idx in idxs
+        )
+        scores = [float(s) for s in scores]
         return {
             'Silhouette_Score':     float(np.mean(scores)),
             'Silhouette_Score_std': float(np.std(scores)),
@@ -94,13 +104,33 @@ class ClassificationEvaluator:
         else:
             use_rep = 'X'
         sc.pp.neighbors(temp, n_neighbors=self.k_neighbors, use_rep=use_rep)
+
+        # Build a minimal AnnData carrying only the neighbor graph (obsp +
+        # uns['neighbors']), so each parallel Leiden run pickles a small copy
+        # instead of the full embedding/PCA matrices.
+        graph_adata = sc.AnnData(
+            X=np.zeros((temp.n_obs, 1), dtype=np.float32),
+            obsp={k: v for k, v in temp.obsp.items()},
+            uns={'neighbors': temp.uns['neighbors']},
+        )
+        del temp
+        gc.collect()
+
+        def _run_leiden(resolution, random_state, key):
+            g = graph_adata.copy()
+            sc.tl.leiden(g, resolution=resolution, random_state=random_state, key_added=key)
+            clusters = g.obs[key].values
+            return clusters, adjusted_rand_score(y, clusters), normalized_mutual_info_score(y, clusters)
+
+        # Resolution sweep, run in parallel. Tie-breaking (first max-ARI wins)
+        # is applied afterwards, in resolution order, to match the original
+        # sequential `ari > best['ARI']` logic.
+        sweep_results = Parallel(n_jobs=len(_LEIDEN_RESOLUTIONS))(
+            delayed(_run_leiden)(res, self.seed, f'leiden_{res}') for res in _LEIDEN_RESOLUTIONS
+        )
         best = {'ARI': -np.inf, 'NMI': -np.inf, 'leiden_resolution': None, 'n_clusters': None}
-        for res in _LEIDEN_RESOLUTIONS:
-            sc.tl.leiden(temp, resolution=res, random_state=self.seed, key_added=f'leiden_{res}')
-            clusters = temp.obs[f'leiden_{res}'].values
-            ari = adjusted_rand_score(y, clusters)
+        for res, (clusters, ari, nmi) in zip(_LEIDEN_RESOLUTIONS, sweep_results):
             if ari > best['ARI']:
-                nmi = normalized_mutual_info_score(y, clusters)
                 best = {
                     'ARI': float(ari),
                     'NMI': float(nmi),
@@ -110,18 +140,14 @@ class ClassificationEvaluator:
 
         # Multi-seed Leiden at best resolution to estimate stochastic variance.
         best_res = best['leiden_resolution']
-        ari_runs, nmi_runs = [], []
-        for run_i in range(5):
-            key = f'leiden_rep_{run_i}'
-            sc.tl.leiden(temp, resolution=best_res,
-                         random_state=run_i * 7 + 13, key_added=key)
-            clusters = temp.obs[key].values
-            ari_runs.append(adjusted_rand_score(y, clusters))
-            nmi_runs.append(normalized_mutual_info_score(y, clusters))
-        best['ARI_std'] = float(np.std(ari_runs))
-        best['NMI_std'] = float(np.std(nmi_runs))
+        multiseed_results = Parallel(n_jobs=5)(
+            delayed(_run_leiden)(best_res, run_i * 7 + 13, f'leiden_rep_{run_i}')
+            for run_i in range(5)
+        )
+        best['ARI_std'] = float(np.std([ari for _, ari, _ in multiseed_results]))
+        best['NMI_std'] = float(np.std([nmi for _, _, nmi in multiseed_results]))
 
-        del temp
+        del graph_adata
         gc.collect()
         return best
 

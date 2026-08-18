@@ -118,7 +118,7 @@ def load_model(best_ckpt_path, device):
     model = select_model(config)
     model_state_dict = model_data['model_state_dict']    
     model.load_state_dict(model_state_dict)
-    return model.cuda(),config
+    return model,config
 
 def load_model_frommmf(best_ckpt_path, key='gene'):
     model_data = torch.load(best_ckpt_path,map_location='cpu')
@@ -142,7 +142,7 @@ def load_model_frommmf(best_ckpt_path, key='gene'):
     model = select_model(config)
     model_state_dict = model_data['model_state_dict']    
     model.load_state_dict(model_state_dict)
-    return model.cuda(),config
+    return model,config
 
 def main_gene_selection(X_df, gene_list):
     """

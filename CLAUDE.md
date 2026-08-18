@@ -88,8 +88,8 @@ notebooks/
 
 ```bash
 # Stage 1
-MODELS=scfoundation ./run_embedding_extraction.sh data/raw/classification/brain_dataset.h5ad
-./.venv/bin/python scripts/merge_chunks.py --input-dir data/embeddings/brain_dataset_scfoundation/
+MODELS=scfoundation ./run_embedding_extraction.sh data/raw/classification/tabula/tabula-blood.h5ad
+./.venv/bin/python scripts/merge_chunks.py --input-dir data/embeddings/tabula-blood/chunks/scfoundation/
 
 # Stage 2 (any of)
 ./.venv/bin/python scripts/run_cell_type_classification.py --input <merged.h5ad> --cell_type_column cell_type
@@ -122,7 +122,7 @@ Layer 0 is post-first-block (not the embedding layer). Add a layer-naming sanity
 
 ## Conventions to preserve
 
-- **Embedding output naming**: stage 1 writes `data/embeddings/<input_stem>_<model>[_<size>]/chunk_NNNN.h5ad`. `scripts/merge_chunks.py` produces `<input_stem>_<model>[_<size>].h5ad` in the same directory.
+- **Embedding output naming**: stage 1 writes `data/embeddings/<input_stem>/chunks/<model>[_<size>]/<input_stem>_chunk_NNNN.h5ad`. `scripts/merge_chunks.py` produces `data/embeddings/<input_stem>/<input_stem>_<model>[_<size>].h5ad` — one level above the chunks folder, grouped by dataset.
 - **Result naming**: `<merged_h5ad_stem><task_suffix>.csv` per `src/scfm_eval/io/results.py`. The aggregator parses these via `config/models.yaml` + `config/datasets.yaml`, so don't hand-rename them.
 - **Subprocess per (model, dataset)** in the driver — gives clean GPU memory between runs and natural isolation.
 - **Italian comments OK** in legacy code; new code prefers English (more searchable). Don't translate existing comments unless touching the surrounding code.

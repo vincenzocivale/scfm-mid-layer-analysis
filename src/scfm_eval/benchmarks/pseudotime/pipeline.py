@@ -31,11 +31,9 @@ def run_evaluation_pipeline(h5ad_path, time_column='week', embedding_prefix='X_l
 
     print(f"Found {len(layers_to_test)} reps to test: {layers_to_test}")
 
-    results = []
-    for layer in layers_to_test:
-        res = evaluator.evaluate_layer(layer)
-        if res is not None:
-            results.append(res)
+    # Each layer is evaluated on its own isolated AnnData (see EmbeddingEvaluator
+    # .evaluate_layers), so they can run in parallel without shared-state clobbering.
+    results = evaluator.evaluate_layers(layers_to_test, n_jobs=min(len(layers_to_test), 8))
 
     results = pd.DataFrame(results)
     if 'Layer' in results.columns:

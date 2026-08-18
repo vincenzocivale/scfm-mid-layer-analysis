@@ -59,12 +59,13 @@ for INPUT_FILE in "${INPUT_FILES[@]}"; do
     INPUT_NAME=$(basename "$INPUT_FILE" .h5ad)
     for MODEL in "${MODELS[@]}"; do
         if [ "$MODEL" == "tahoe" ]; then
-            MODEL_OUT_DIR="${OUTPUT_DIR}/${INPUT_NAME}_${MODEL}_${TAHOE_MODEL_SIZE}"
+            MODEL_SUFFIX="${MODEL}_${TAHOE_MODEL_SIZE}"
             SIZE_ARG=(--model-size "$TAHOE_MODEL_SIZE")
         else
-            MODEL_OUT_DIR="${OUTPUT_DIR}/${INPUT_NAME}_${MODEL}"
+            MODEL_SUFFIX="${MODEL}"
             SIZE_ARG=()
         fi
+        MODEL_OUT_DIR="${OUTPUT_DIR}/${INPUT_NAME}/chunks/${MODEL_SUFFIX}"
         mkdir -p "$MODEL_OUT_DIR"
 
         # Select Python interpreter: several models need dedicated conda envs.

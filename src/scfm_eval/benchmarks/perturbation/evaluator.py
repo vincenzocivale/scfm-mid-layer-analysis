@@ -13,7 +13,7 @@ import pandas as pd
 import scanpy as sc
 import torch
 import torch.nn.functional as F
-from scipy.stats import spearmanr
+from scipy.stats import rankdata, spearmanr
 from tqdm import tqdm
 
 _SEED = 42
@@ -48,12 +48,19 @@ class PerturbationEvaluator:
             p for p in counts.index
             if pd.notna(p) and p != control_label and counts[p] >= min_cells_per_perturb
         ])
+        self._centroid_cache: Dict[str, pd.DataFrame] = {}
 
     def _compute_centroids(self, layer_key: str) -> pd.DataFrame:
+        # Cached per layer: semantic_similarity and pathway_clustering both
+        # need the full per-perturbation centroid matrix for the same layer.
+        if layer_key in self._centroid_cache:
+            return self._centroid_cache[layer_key]
         emb = self.adata.obsm[layer_key]
         labels = self.adata.obs[self.perturb_key].values
         rows = [emb[labels == p].mean(axis=0) for p in self.perturbations]
-        return pd.DataFrame(np.vstack(rows), index=self.perturbations)
+        centroids = pd.DataFrame(np.vstack(rows), index=self.perturbations)
+        self._centroid_cache[layer_key] = centroids
+        return centroids
 
     def evaluate_semantic_similarity(self, reference_sim_matrix: pd.DataFrame,
                                      n_permutations: int = 100) -> pd.DataFrame:
@@ -77,12 +84,18 @@ class PerturbationEvaluator:
             emb_vec = _upper_triu(emb_sim)
             corr, p_val = spearmanr(ref_vec, emb_vec)
 
+            # ref_vec is fixed across permutations, so rank it once instead of
+            # re-ranking it inside spearmanr on every iteration. This replicates
+            # spearmanr's internal computation (rankdata + np.corrcoef on the
+            # column-stacked ranks) exactly, including NaN-on-constant-input.
+            rank_ref = rankdata(ref_vec)
             null_corrs = np.empty(n_permutations)
             n = len(common)
             for i in range(n_permutations):
                 perm = rng.permutation(n)
                 shuffled = emb_sim[np.ix_(perm, perm)]
-                null_corrs[i], _ = spearmanr(ref_vec, _upper_triu(shuffled))
+                rank_shuffled = rankdata(_upper_triu(shuffled))
+                null_corrs[i] = np.corrcoef(np.column_stack([rank_ref, rank_shuffled]), rowvar=False)[1, 0]
             null_mean = float(np.mean(null_corrs))
             null_std = float(np.std(null_corrs))
             z = (corr - null_mean) / null_std if null_std > 0 else np.nan
